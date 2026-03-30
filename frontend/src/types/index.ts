@@ -18,6 +18,11 @@ export interface ProductItem {
     marketPrice: number | null;
     directLowPrice: number | null;
     pctBelowMid: number | null;
+    pctChange30d: number | null;
+    pctChange90d: number | null;
+    pctChange1yr: number | null;
+    allTimeLow: number | null;
+    allTimeHigh: number | null;
 }
 
 export interface ProductsResponse {
@@ -84,4 +89,37 @@ export interface ProductFilters {
     sortDir: string;
     page: number;
     pageSize: number;
+}
+
+export interface PriceHistoryPoint {
+    date: string;
+    marketPrice: number | null;
+    midPrice: number | null;
+    lowPrice: number | null;
+}
+
+export interface PriceHistoryResponse {
+    productId: number;
+    history: PriceHistoryPoint[];
+}
+
+export interface PriceComparisonPeriod {
+    price: number;
+    pctChange: number;
+}
+
+export interface PriceExtremePoint {
+    price: number;
+    date: string | null;
+}
+
+export interface PriceComparisonsResponse {
+    productId: number;
+    subTypeName: string;
+    currentPrice: number | null;
+    thirtyDaysAgo: PriceComparisonPeriod | null;
+    ninetyDaysAgo: PriceComparisonPeriod | null;
+    oneYearAgo: PriceComparisonPeriod | null;
+    allTimeLow: PriceExtremePoint | null;
+    allTimeHigh: PriceExtremePoint | null;
 }

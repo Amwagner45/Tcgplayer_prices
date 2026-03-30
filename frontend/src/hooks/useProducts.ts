@@ -1,5 +1,12 @@
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
-import { fetchProducts, fetchStats, fetchFilters, fetchProduct } from "../services/api";
+import {
+    fetchProducts,
+    fetchStats,
+    fetchFilters,
+    fetchProduct,
+    fetchPriceHistory,
+    fetchPriceComparisons,
+} from "../services/api";
 import type { ProductFilters } from "../types";
 
 export function useProducts(filters: ProductFilters) {
@@ -29,5 +36,21 @@ export function useFilters(categoryId?: number) {
     return useQuery({
         queryKey: ["filters", categoryId],
         queryFn: () => fetchFilters(categoryId),
+    });
+}
+
+export function usePriceHistory(productId: number | null, days: number = 365) {
+    return useQuery({
+        queryKey: ["priceHistory", productId, days],
+        queryFn: () => fetchPriceHistory(productId!, days),
+        enabled: productId !== null,
+    });
+}
+
+export function usePriceComparisons(productId: number | null) {
+    return useQuery({
+        queryKey: ["priceComparisons", productId],
+        queryFn: () => fetchPriceComparisons(productId!),
+        enabled: productId !== null,
     });
 }

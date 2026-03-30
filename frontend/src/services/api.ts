@@ -5,6 +5,8 @@ import type {
     StatsResponse,
     FiltersResponse,
     ProductFilters,
+    PriceHistoryResponse,
+    PriceComparisonsResponse,
 } from "../types";
 
 const api = axios.create({
@@ -54,5 +56,25 @@ export async function fetchFilters(
     const params: Record<string, number> = {};
     if (categoryId) params.category_id = categoryId;
     const { data } = await api.get<FiltersResponse>("/filters", { params });
+    return data;
+}
+
+export async function fetchPriceHistory(
+    productId: number,
+    days: number = 365
+): Promise<PriceHistoryResponse> {
+    const { data } = await api.get<PriceHistoryResponse>(
+        `/products/${productId}/history`,
+        { params: { days } }
+    );
+    return data;
+}
+
+export async function fetchPriceComparisons(
+    productId: number
+): Promise<PriceComparisonsResponse> {
+    const { data } = await api.get<PriceComparisonsResponse>(
+        `/products/${productId}/comparisons`
+    );
     return data;
 }

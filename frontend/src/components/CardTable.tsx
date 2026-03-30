@@ -45,14 +45,31 @@ function getDealChipColor(
     return "default";
 }
 
+function formatPctChange(pct: number | null): string {
+    if (pct === null) return "—";
+    const sign = pct > 0 ? "+" : "";
+    return `${sign}${pct.toFixed(1)}%`;
+}
+
+function getPctChangeColor(pct: number | null): string {
+    if (pct === null) return "#999";
+    if (pct <= -20) return "#4caf50";  // big drop = good buying opportunity
+    if (pct <= -5) return "#8bc34a";
+    if (pct >= 20) return "#f44336";
+    if (pct >= 5) return "#ff9800";
+    return "#999";
+}
+
 const SORT_COLUMNS: { key: string; label: string; align: "left" | "right" }[] =
     [
         { key: "name", label: "Card", align: "left" },
         { key: "rarity", label: "Rarity", align: "left" },
         { key: "market_price", label: "Market", align: "right" },
-        { key: "mid_price", label: "Mid", align: "right" },
         { key: "low_price", label: "Low", align: "right" },
         { key: "pct_below_mid", label: "% Below Mid", align: "right" },
+        { key: "pct_change_30d", label: "30d", align: "right" },
+        { key: "pct_change_90d", label: "90d", align: "right" },
+        { key: "pct_change_1yr", label: "1yr", align: "right" },
     ];
 
 export default function CardTable({ filters, onChange, onSelectCard }: Props) {
@@ -111,7 +128,7 @@ export default function CardTable({ filters, onChange, onSelectCard }: Props) {
                         {isLoading
                             ? Array.from({ length: 10 }).map((_, i) => (
                                 <TableRow key={i}>
-                                    {Array.from({ length: 8 }).map((_, j) => (
+                                    {Array.from({ length: 10 }).map((_, j) => (
                                         <TableCell key={j}>
                                             <Skeleton />
                                         </TableCell>
@@ -169,9 +186,6 @@ export default function CardTable({ filters, onChange, onSelectCard }: Props) {
                                         {formatPrice(item.marketPrice)}
                                     </TableCell>
                                     <TableCell align="right">
-                                        {formatPrice(item.midPrice)}
-                                    </TableCell>
-                                    <TableCell align="right">
                                         {formatPrice(item.lowPrice)}
                                     </TableCell>
                                     <TableCell align="right">
@@ -185,6 +199,36 @@ export default function CardTable({ filters, onChange, onSelectCard }: Props) {
                                         ) : (
                                             "N/A"
                                         )}
+                                    </TableCell>
+                                    <TableCell
+                                        align="right"
+                                        sx={{
+                                            color: getPctChangeColor(item.pctChange30d),
+                                            fontWeight: 600,
+                                            fontSize: "0.8rem",
+                                        }}
+                                    >
+                                        {formatPctChange(item.pctChange30d)}
+                                    </TableCell>
+                                    <TableCell
+                                        align="right"
+                                        sx={{
+                                            color: getPctChangeColor(item.pctChange90d),
+                                            fontWeight: 600,
+                                            fontSize: "0.8rem",
+                                        }}
+                                    >
+                                        {formatPctChange(item.pctChange90d)}
+                                    </TableCell>
+                                    <TableCell
+                                        align="right"
+                                        sx={{
+                                            color: getPctChangeColor(item.pctChange1yr),
+                                            fontWeight: 600,
+                                            fontSize: "0.8rem",
+                                        }}
+                                    >
+                                        {formatPctChange(item.pctChange1yr)}
                                     </TableCell>
                                     <TableCell>
                                         <Typography

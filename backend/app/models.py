@@ -1,5 +1,5 @@
-from datetime import datetime
-from sqlalchemy import String, Integer, Float, DateTime, ForeignKey, Index
+from datetime import datetime, date
+from sqlalchemy import String, Integer, Float, DateTime, Date, ForeignKey, Index
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
@@ -76,3 +76,49 @@ class Price(Base):
     product: Mapped["Product"] = relationship(back_populates="prices")
 
     __table_args__ = (Index("ix_prices_market_price", "market_price"),)
+
+
+class PriceHistory(Base):
+    __tablename__ = "price_history"
+
+    product_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("products.product_id"), primary_key=True
+    )
+    sub_type_name: Mapped[str] = mapped_column(String, primary_key=True)
+    date: Mapped[date] = mapped_column(Date, primary_key=True)
+    low_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    mid_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    high_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    market_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    direct_low_price: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    __table_args__ = (
+        Index("ix_price_history_product_date", "product_id", "date"),
+        Index("ix_price_history_date", "date"),
+    )
+
+
+class PriceSummary(Base):
+    __tablename__ = "price_summary"
+
+    product_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("products.product_id"), primary_key=True
+    )
+    sub_type_name: Mapped[str] = mapped_column(String, primary_key=True)
+    market_price_30d_ago: Mapped[float | None] = mapped_column(Float, nullable=True)
+    market_price_90d_ago: Mapped[float | None] = mapped_column(Float, nullable=True)
+    market_price_1yr_ago: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pct_change_30d: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pct_change_90d: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pct_change_1yr: Mapped[float | None] = mapped_column(Float, nullable=True)
+    all_time_low: Mapped[float | None] = mapped_column(Float, nullable=True)
+    all_time_low_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    all_time_high: Mapped[float | None] = mapped_column(Float, nullable=True)
+    all_time_high_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+
+class SkippedArchiveDate(Base):
+    __tablename__ = "skipped_archive_dates"
+
+    date: Mapped[date] = mapped_column(Date, primary_key=True)
+    reason: Mapped[str] = mapped_column(String, nullable=False)
