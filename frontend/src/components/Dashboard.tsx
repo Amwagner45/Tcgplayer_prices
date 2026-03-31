@@ -64,7 +64,7 @@ export default function Dashboard() {
                 }}
             >
                 {/* Sidebar */}
-                <Box sx={{ width: { xs: "100%", md: 280 }, flexShrink: 0 }}>
+                <Box sx={{ width: { xs: "100%", md: 300 }, flexShrink: 0 }}>
                     <FilterPanel filters={filters} onChange={handleFilterChange} />
                 </Box>
 

@@ -122,3 +122,38 @@ class SkippedArchiveDate(Base):
 
     date: Mapped[date] = mapped_column(Date, primary_key=True)
     reason: Mapped[str] = mapped_column(String, nullable=False)
+
+
+class Watchlist(Base):
+    __tablename__ = "watchlists"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    items: Mapped[list["WatchlistItem"]] = relationship(
+        back_populates="watchlist", cascade="all, delete-orphan"
+    )
+
+
+class WatchlistItem(Base):
+    __tablename__ = "watchlist_items"
+
+    watchlist_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("watchlists.id", ondelete="CASCADE"), primary_key=True
+    )
+    product_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("products.product_id"), primary_key=True
+    )
+    added_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    watchlist: Mapped["Watchlist"] = relationship(back_populates="items")
+
+
+class SavedFilter(Base):
+    __tablename__ = "saved_filters"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    filter_json: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

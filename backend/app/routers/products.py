@@ -4,7 +4,15 @@ from sqlalchemy import func, case
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
-from app.models import Product, Price, PriceHistory, PriceSummary, Group, Category
+from app.models import (
+    Product,
+    Price,
+    PriceHistory,
+    PriceSummary,
+    Group,
+    Category,
+    WatchlistItem,
+)
 
 router = APIRouter(prefix="/api")
 
@@ -12,12 +20,13 @@ router = APIRouter(prefix="/api")
 @router.get("/products")
 def list_products(
     category_id: int | None = Query(None),
-    group_id: int | None = Query(None),
+    group_id: str | None = Query(None),
     rarity: str | None = Query(None),
     sub_type: str | None = Query(None),
     min_price: float | None = Query(None),
     max_price: float | None = Query(None),
     search: str | None = Query(None),
+    watchlist_id: int | None = Query(None),
     sort_by: str = Query("pct_below_mid"),
     sort_dir: str = Query("desc"),
     page: int = Query(1, ge=1),
@@ -75,23 +84,56 @@ def list_products(
     # Filters
     if category_id is not None:
         query = query.filter(Product.category_id == category_id)
-    if group_id is not None:
-        query = query.filter(Product.group_id == group_id)
+    if group_id:
+        group_ids = [int(g) for g in group_id.split(",") if g.strip()]
+        if len(group_ids) == 1:
+            query = query.filter(Product.group_id == group_ids[0])
+        else:
+            query = query.filter(Product.group_id.in_(group_ids))
     if rarity:
-        query = query.filter(Product.rarity == rarity)
+        rarities = [r.strip() for r in rarity.split(",") if r.strip()]
+        if len(rarities) == 1:
+            query = query.filter(Product.rarity == rarities[0])
+        else:
+            query = query.filter(Product.rarity.in_(rarities))
     if sub_type:
-        query = query.filter(Price.sub_type_name == sub_type)
+        sub_types = [s.strip() for s in sub_type.split(",") if s.strip()]
+        if len(sub_types) == 1:
+            query = query.filter(Price.sub_type_name == sub_types[0])
+        else:
+            query = query.filter(Price.sub_type_name.in_(sub_types))
     if min_price is not None:
         query = query.filter(Price.market_price >= min_price)
     if max_price is not None:
         query = query.filter(Price.market_price <= max_price)
     if search:
         query = query.filter(Product.name.ilike(f"%{search}%"))
+    if watchlist_id is not None:
+        query = query.filter(
+            Product.product_id.in_(
+                db.query(WatchlistItem.product_id).filter(
+                    WatchlistItem.watchlist_id == watchlist_id
+                )
+            )
+        )
 
     # Only show cards that have a market price
     query = query.filter(Price.market_price.isnot(None))
 
     # Sorting
+    # range_position: 0 = at ATL, 1 = at ATH
+    range_position = case(
+        (
+            (PriceSummary.all_time_high.isnot(None))
+            & (PriceSummary.all_time_low.isnot(None))
+            & (PriceSummary.all_time_high > PriceSummary.all_time_low)
+            & (Price.market_price.isnot(None)),
+            (Price.market_price - PriceSummary.all_time_low)
+            / (PriceSummary.all_time_high - PriceSummary.all_time_low),
+        ),
+        else_=None,
+    ).label("range_position")
+
     sort_map = {
         "pct_below_mid": pct_below_mid,
         "market_price": Price.market_price,
@@ -102,6 +144,7 @@ def list_products(
         "pct_change_30d": PriceSummary.pct_change_30d,
         "pct_change_90d": PriceSummary.pct_change_90d,
         "pct_change_1yr": PriceSummary.pct_change_1yr,
+        "range_position": range_position,
     }
     sort_col = sort_map.get(sort_by, pct_below_mid)
     if sort_dir == "asc":

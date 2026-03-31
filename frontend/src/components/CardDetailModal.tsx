@@ -16,9 +16,16 @@ import {
     Skeleton,
     ToggleButton,
     ToggleButtonGroup,
+    FormControl,
+    InputLabel,
+    Select,
+    MenuItem,
+    Button,
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
+import StarIcon from "@mui/icons-material/Star";
+import StarBorderIcon from "@mui/icons-material/StarBorder";
 import {
     ResponsiveContainer,
     LineChart,
@@ -28,7 +35,15 @@ import {
     Tooltip,
     CartesianGrid,
 } from "recharts";
-import { useProduct, usePriceHistory, usePriceComparisons } from "../hooks/useProducts";
+import {
+    useProduct,
+    usePriceHistory,
+    usePriceComparisons,
+    useWatchlists,
+    useWatchlistItems,
+    useAddToWatchlist,
+    useRemoveFromWatchlist,
+} from "../hooks/useProducts";
 
 interface Props {
     productId: number | null;
@@ -83,6 +98,31 @@ export default function CardDetailModal({ productId, onClose }: Props) {
     const [chartDays, setChartDays] = useState(365);
     const { data: historyData } = usePriceHistory(productId, chartDays);
     const { data: comparisons } = usePriceComparisons(productId);
+    const { data: watchlists } = useWatchlists();
+    const [selectedWatchlistId, setSelectedWatchlistId] = useState<number | null>(null);
+    const { data: watchlistItems } = useWatchlistItems(selectedWatchlistId);
+    const addToWatchlist = useAddToWatchlist();
+    const removeFromWatchlist = useRemoveFromWatchlist();
+
+    const isInWatchlist =
+        productId !== null &&
+        watchlistItems !== undefined &&
+        watchlistItems.includes(productId);
+
+    const handleToggleWatchlist = () => {
+        if (!selectedWatchlistId || productId === null) return;
+        if (isInWatchlist) {
+            removeFromWatchlist.mutate({
+                watchlistId: selectedWatchlistId,
+                productId,
+            });
+        } else {
+            addToWatchlist.mutate({
+                watchlistId: selectedWatchlistId,
+                productId,
+            });
+        }
+    };
 
     return (
         <Dialog
@@ -178,6 +218,47 @@ export default function CardDetailModal({ productId, onClose }: Props) {
                                     >
                                         View on TCGPlayer <OpenInNewIcon fontSize="small" />
                                     </Link>
+                                )}
+
+                                {/* Watchlist Controls */}
+                                {watchlists && watchlists.length > 0 && (
+                                    <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2, mt: 1 }}>
+                                        <FormControl size="small" sx={{ minWidth: 160 }}>
+                                            <InputLabel>Watchlist</InputLabel>
+                                            <Select
+                                                value={selectedWatchlistId ?? ""}
+                                                label="Watchlist"
+                                                onChange={(e) =>
+                                                    setSelectedWatchlistId(
+                                                        e.target.value ? Number(e.target.value) : null
+                                                    )
+                                                }
+                                            >
+                                                {watchlists.map((w) => (
+                                                    <MenuItem key={w.id} value={w.id}>
+                                                        {w.name}
+                                                    </MenuItem>
+                                                ))}
+                                            </Select>
+                                        </FormControl>
+                                        {selectedWatchlistId && (
+                                            <Button
+                                                variant={isInWatchlist ? "outlined" : "contained"}
+                                                size="small"
+                                                startIcon={
+                                                    isInWatchlist ? (
+                                                        <StarIcon />
+                                                    ) : (
+                                                        <StarBorderIcon />
+                                                    )
+                                                }
+                                                onClick={handleToggleWatchlist}
+                                                color={isInWatchlist ? "warning" : "primary"}
+                                            >
+                                                {isInWatchlist ? "Remove" : "Add"}
+                                            </Button>
+                                        )}
+                                    </Box>
                                 )}
 
                                 <Typography variant="subtitle2" fontWeight={700} sx={{ mt: 2, mb: 1 }}>

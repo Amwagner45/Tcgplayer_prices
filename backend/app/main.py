@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import init_db
-from app.routers import products, stats
+from app.routers import products, stats, watchlists, saved_filters
 
 app = FastAPI(title="TCGPlayer Price Dashboard API")
 
@@ -16,6 +16,8 @@ app.add_middleware(
 
 app.include_router(products.router)
 app.include_router(stats.router)
+app.include_router(watchlists.router)
+app.include_router(saved_filters.router)
 
 
 @app.on_event("startup")

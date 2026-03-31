@@ -376,27 +376,44 @@ def rebuild_price_summary(db):
         price_90d = get_price_near_date(date_90d)
         price_1yr = get_price_near_date(date_1yr)
 
-        # All-time low/high
-        atl_row = (
-            db.query(PriceHistory.market_price, PriceHistory.date)
+        # All-time low/high (skip first 30 days of data for this product/variant)
+        earliest_date_row = (
+            db.query(func.min(PriceHistory.date))
             .filter(
                 PriceHistory.product_id == product_id,
                 PriceHistory.sub_type_name == sub_type_name,
-                PriceHistory.market_price.isnot(None),
             )
-            .order_by(PriceHistory.market_price.asc())
-            .first()
+            .scalar()
         )
-        ath_row = (
-            db.query(PriceHistory.market_price, PriceHistory.date)
-            .filter(
-                PriceHistory.product_id == product_id,
-                PriceHistory.sub_type_name == sub_type_name,
-                PriceHistory.market_price.isnot(None),
+        atl_cutoff = (
+            earliest_date_row + timedelta(days=30) if earliest_date_row else None
+        )
+
+        atl_row = None
+        ath_row = None
+        if atl_cutoff:
+            atl_row = (
+                db.query(PriceHistory.market_price, PriceHistory.date)
+                .filter(
+                    PriceHistory.product_id == product_id,
+                    PriceHistory.sub_type_name == sub_type_name,
+                    PriceHistory.market_price.isnot(None),
+                    PriceHistory.date >= atl_cutoff,
+                )
+                .order_by(PriceHistory.market_price.asc())
+                .first()
             )
-            .order_by(PriceHistory.market_price.desc())
-            .first()
-        )
+            ath_row = (
+                db.query(PriceHistory.market_price, PriceHistory.date)
+                .filter(
+                    PriceHistory.product_id == product_id,
+                    PriceHistory.sub_type_name == sub_type_name,
+                    PriceHistory.market_price.isnot(None),
+                    PriceHistory.date >= atl_cutoff,
+                )
+                .order_by(PriceHistory.market_price.desc())
+                .first()
+            )
 
         batch.append(
             {

@@ -79,12 +79,13 @@ export interface FiltersResponse {
 
 export interface ProductFilters {
     categoryId?: number;
-    groupId?: number;
-    rarity?: string;
-    subType?: string;
+    groupIds?: number[];
+    rarities?: string[];
+    subTypes?: string[];
     minPrice?: number;
     maxPrice?: number;
     search?: string;
+    watchlistId?: number;
     sortBy: string;
     sortDir: string;
     page: number;
@@ -122,4 +123,18 @@ export interface PriceComparisonsResponse {
     oneYearAgo: PriceComparisonPeriod | null;
     allTimeLow: PriceExtremePoint | null;
     allTimeHigh: PriceExtremePoint | null;
+}
+
+export interface WatchlistSummary {
+    id: number;
+    name: string;
+    itemCount: number;
+    createdAt: string;
+}
+
+export interface SavedFilterItem {
+    id: number;
+    name: string;
+    filterJson: string;
+    createdAt: string;
 }

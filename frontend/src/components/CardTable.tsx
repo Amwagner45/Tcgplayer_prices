@@ -13,6 +13,7 @@ import {
     Chip,
     Avatar,
     Skeleton,
+    Tooltip,
 } from "@mui/material";
 import { useProducts } from "../hooks/useProducts";
 import type { ProductFilters, ProductItem } from "../types";
@@ -60,13 +61,88 @@ function getPctChangeColor(pct: number | null): string {
     return "#999";
 }
 
+function PriceRangeBar({
+    atl,
+    ath,
+    current,
+}: {
+    atl: number | null;
+    ath: number | null;
+    current: number | null;
+}) {
+    if (atl === null || ath === null || current === null || ath <= atl) {
+        return <Typography variant="caption" color="text.secondary">—</Typography>;
+    }
+    const pct = Math.min(Math.max((current - atl) / (ath - atl), 0), 1);
+    const barColor =
+        pct <= 0.25
+            ? "#4caf50"
+            : pct <= 0.5
+                ? "#8bc34a"
+                : pct <= 0.75
+                    ? "#ff9800"
+                    : "#f44336";
+
+    return (
+        <Tooltip
+            title={`ATL: $${atl.toFixed(2)} | Current: $${current.toFixed(2)} | ATH: $${ath.toFixed(2)} (${(pct * 100).toFixed(0)}%)`}
+            arrow
+        >
+            <Box sx={{ display: "flex", alignItems: "center", gap: 0.5, minWidth: 90 }}>
+                <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.6rem", minWidth: 22, textAlign: "right" }}>
+                    ${atl < 1 ? atl.toFixed(2) : atl.toFixed(0)}
+                </Typography>
+                <Box
+                    sx={{
+                        position: "relative",
+                        flex: 1,
+                        height: 8,
+                        bgcolor: "#e0e0e0",
+                        borderRadius: 4,
+                        overflow: "hidden",
+                    }}
+                >
+                    <Box
+                        sx={{
+                            position: "absolute",
+                            left: 0,
+                            top: 0,
+                            height: "100%",
+                            width: `${pct * 100}%`,
+                            bgcolor: barColor,
+                            borderRadius: 4,
+                            transition: "width 0.3s ease",
+                        }}
+                    />
+                    <Box
+                        sx={{
+                            position: "absolute",
+                            left: `calc(${pct * 100}% - 4px)`,
+                            top: -1,
+                            width: 10,
+                            height: 10,
+                            borderRadius: "50%",
+                            bgcolor: barColor,
+                            border: "2px solid white",
+                            boxShadow: "0 1px 3px rgba(0,0,0,0.3)",
+                        }}
+                    />
+                </Box>
+                <Typography variant="caption" color="text.secondary" sx={{ fontSize: "0.6rem", minWidth: 22 }}>
+                    ${ath < 1 ? ath.toFixed(2) : ath.toFixed(0)}
+                </Typography>
+            </Box>
+        </Tooltip>
+    );
+}
+
 const SORT_COLUMNS: { key: string; label: string; align: "left" | "right" }[] =
     [
         { key: "name", label: "Card", align: "left" },
         { key: "rarity", label: "Rarity", align: "left" },
         { key: "market_price", label: "Market", align: "right" },
         { key: "low_price", label: "Low", align: "right" },
-        { key: "pct_below_mid", label: "% Below Mid", align: "right" },
+        { key: "range_position", label: "ATL ← Price → ATH", align: "left" },
         { key: "pct_change_30d", label: "30d", align: "right" },
         { key: "pct_change_90d", label: "90d", align: "right" },
         { key: "pct_change_1yr", label: "1yr", align: "right" },
@@ -188,17 +264,12 @@ export default function CardTable({ filters, onChange, onSelectCard }: Props) {
                                     <TableCell align="right">
                                         {formatPrice(item.lowPrice)}
                                     </TableCell>
-                                    <TableCell align="right">
-                                        {item.pctBelowMid !== null ? (
-                                            <Chip
-                                                label={`${item.pctBelowMid}%`}
-                                                size="small"
-                                                color={getDealChipColor(item.pctBelowMid)}
-                                                sx={{ fontWeight: 700, minWidth: 60 }}
-                                            />
-                                        ) : (
-                                            "N/A"
-                                        )}
+                                    <TableCell sx={{ minWidth: 130 }}>
+                                        <PriceRangeBar
+                                            atl={item.allTimeLow}
+                                            ath={item.allTimeHigh}
+                                            current={item.marketPrice}
+                                        />
                                     </TableCell>
                                     <TableCell
                                         align="right"
