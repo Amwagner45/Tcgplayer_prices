@@ -1,0 +1,1 @@
+cd backend && python -m scripts.fetch_prices
