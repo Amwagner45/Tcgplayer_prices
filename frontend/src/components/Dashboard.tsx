@@ -1,9 +1,14 @@
 import { useState, useCallback } from "react";
-import { Box, Typography } from "@mui/material";
+import { Box, Typography, Tabs, Tab, Container } from "@mui/material";
+import ViewListIcon from "@mui/icons-material/ViewList";
+import WhatshotIcon from "@mui/icons-material/Whatshot";
+import PlaylistPlayIcon from "@mui/icons-material/PlaylistPlay";
 import FilterPanel from "./FilterPanel";
 import StatsBar from "./StatsBar";
 import CardTable from "./CardTable";
 import CardDetailModal from "./CardDetailModal";
+import OpportunitiesPanel from "./OpportunitiesPanel";
+import WatchlistView from "./WatchlistView";
 import type { ProductFilters } from "../types";
 
 const DEFAULT_FILTERS: ProductFilters = {
@@ -16,6 +21,7 @@ const DEFAULT_FILTERS: ProductFilters = {
 export default function Dashboard() {
     const [filters, setFilters] = useState<ProductFilters>(DEFAULT_FILTERS);
     const [selectedCard, setSelectedCard] = useState<number | null>(null);
+    const [activeTab, setActiveTab] = useState(0);
 
     const handleFilterChange = useCallback(
         (partial: Partial<ProductFilters>) => {
@@ -25,60 +31,134 @@ export default function Dashboard() {
     );
 
     return (
-        <Box
-            sx={{
-                minHeight: "100vh",
-                bgcolor: "#f7f8fa",
-                px: { xs: 2, md: 4 },
-                py: 3,
-            }}
-        >
-            {/* Header */}
-            <Box sx={{ mb: 3 }}>
-                <Typography
-                    variant="h4"
-                    fontWeight={800}
-                    sx={{
-                        background: "linear-gradient(135deg, #1976d2 0%, #4caf50 100%)",
-                        backgroundClip: "text",
-                        WebkitBackgroundClip: "text",
-                        WebkitTextFillColor: "transparent",
-                    }}
-                >
-                    TCG Price Dashboard
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                    Find buying opportunities across Pokemon, Flesh and Blood & One Piece
-                </Typography>
-            </Box>
-
-            {/* Stats */}
-            <StatsBar categoryId={filters.categoryId} />
-
-            {/* Main Layout */}
+        <Box sx={{ minHeight: "100vh", bgcolor: "background.default" }}>
+            {/* Dark Header */}
             <Box
                 sx={{
-                    display: "flex",
-                    gap: 3,
-                    flexDirection: { xs: "column", md: "row" },
+                    background:
+                        "linear-gradient(135deg, #0f1923 0%, #1a2a3a 50%, #162029 100%)",
+                    color: "white",
+                    px: { xs: 2, md: 4 },
+                    pt: 2.5,
+                    pb: 0,
                 }}
             >
-                {/* Sidebar */}
-                <Box sx={{ width: { xs: "100%", md: 300 }, flexShrink: 0 }}>
-                    <FilterPanel filters={filters} onChange={handleFilterChange} />
-                </Box>
+                <Container maxWidth="xl" disableGutters>
+                    <Box
+                        sx={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            mb: 2,
+                        }}
+                    >
+                        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+                            <Box
+                                sx={{
+                                    width: 36,
+                                    height: 36,
+                                    borderRadius: 2,
+                                    background:
+                                        "linear-gradient(135deg, #2962ff, #00bfa5)",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    fontWeight: 900,
+                                    fontSize: "1.1rem",
+                                }}
+                            >
+                                T
+                            </Box>
+                            <Box>
+                                <Typography
+                                    variant="h5"
+                                    fontWeight={800}
+                                    sx={{ lineHeight: 1.2 }}
+                                >
+                                    TCG Tracker
+                                </Typography>
+                                <Typography
+                                    variant="caption"
+                                    sx={{ opacity: 0.5, fontSize: "0.7rem" }}
+                                >
+                                    Pokemon · Flesh and Blood · One Piece
+                                </Typography>
+                            </Box>
+                        </Box>
+                    </Box>
 
-                {/* Table */}
-                <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <CardTable
-                        filters={filters}
-                        onChange={handleFilterChange}
-                        onSelectCard={setSelectedCard}
-                    />
-                </Box>
+                    <Tabs
+                        value={activeTab}
+                        onChange={(_, v) => setActiveTab(v)}
+                        sx={{
+                            "& .MuiTabs-indicator": {
+                                backgroundColor: "#2962ff",
+                                height: 3,
+                                borderRadius: "3px 3px 0 0",
+                            },
+                            "& .MuiTab-root": {
+                                color: "rgba(255,255,255,0.5)",
+                                minHeight: 48,
+                                "&.Mui-selected": { color: "#fff" },
+                            },
+                        }}
+                    >
+                        <Tab
+                            icon={<ViewListIcon />}
+                            iconPosition="start"
+                            label="Browse"
+                        />
+                        <Tab
+                            icon={<WhatshotIcon />}
+                            iconPosition="start"
+                            label="Opportunities"
+                        />
+                        <Tab
+                            icon={<PlaylistPlayIcon />}
+                            iconPosition="start"
+                            label="Watchlists"
+                        />
+                    </Tabs>
+                </Container>
             </Box>
 
-            {/* Detail Modal */}
+            {/* Content */}
+            <Container maxWidth="xl" sx={{ py: 3 }}>
+                <StatsBar categoryId={filters.categoryId} />
+
+                {activeTab === 0 && (
+                    <Box
+                        sx={{
+                            display: "flex",
+                            gap: 3,
+                            flexDirection: { xs: "column", md: "row" },
+                        }}
+                    >
+                        <Box sx={{ width: { xs: "100%", md: 300 }, flexShrink: 0 }}>
+                            <FilterPanel
+                                filters={filters}
+                                onChange={handleFilterChange}
+                            />
+                        </Box>
+                        <Box sx={{ flex: 1, minWidth: 0 }}>
+                            <CardTable
+                                filters={filters}
+                                onChange={handleFilterChange}
+                                onSelectCard={setSelectedCard}
+                            />
+                        </Box>
+                    </Box>
+                )}
+
+                {activeTab === 1 && (
+                    <OpportunitiesPanel onSelectCard={setSelectedCard} />
+                )}
+
+                {activeTab === 2 && (
+                    <WatchlistView onSelectCard={setSelectedCard} />
+                )}
+            </Container>
+
             <CardDetailModal
                 productId={selectedCard}
                 onClose={() => setSelectedCard(null)}

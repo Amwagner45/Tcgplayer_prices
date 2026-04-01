@@ -22,7 +22,10 @@ export interface ProductItem {
     pctChange90d: number | null;
     pctChange1yr: number | null;
     allTimeLow: number | null;
+    allTimeLowDate: string | null;
     allTimeHigh: number | null;
+    allTimeHighDate: string | null;
+    rangePosition: number | null;
 }
 
 export interface ProductsResponse {
@@ -86,6 +89,7 @@ export interface ProductFilters {
     maxPrice?: number;
     search?: string;
     watchlistId?: number;
+    maxRangePosition?: number;
     sortBy: string;
     sortDir: string;
     page: number;

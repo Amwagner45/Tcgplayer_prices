@@ -27,6 +27,7 @@ def list_products(
     max_price: float | None = Query(None),
     search: str | None = Query(None),
     watchlist_id: int | None = Query(None),
+    max_range_position: float | None = Query(None),
     sort_by: str = Query("pct_below_mid"),
     sort_dir: str = Query("desc"),
     page: int = Query(1, ge=1),
@@ -69,7 +70,9 @@ def list_products(
             PriceSummary.pct_change_90d,
             PriceSummary.pct_change_1yr,
             PriceSummary.all_time_low,
+            PriceSummary.all_time_low_date,
             PriceSummary.all_time_high,
+            PriceSummary.all_time_high_date,
         )
         .join(Price, Product.product_id == Price.product_id)
         .join(Group, Product.group_id == Group.group_id)
@@ -120,6 +123,17 @@ def list_products(
     # Only show cards that have a market price
     query = query.filter(Price.market_price.isnot(None))
 
+    # Range position filter (server-side)
+    if max_range_position is not None:
+        query = query.filter(
+            PriceSummary.all_time_high.isnot(None),
+            PriceSummary.all_time_low.isnot(None),
+            PriceSummary.all_time_high > PriceSummary.all_time_low,
+            (Price.market_price - PriceSummary.all_time_low)
+            / (PriceSummary.all_time_high - PriceSummary.all_time_low)
+            <= max_range_position,
+        )
+
     # Sorting
     # range_position: 0 = at ATL, 1 = at ATH
     range_position = case(
@@ -148,9 +162,12 @@ def list_products(
     }
     sort_col = sort_map.get(sort_by, pct_below_mid)
     if sort_dir == "asc":
-        query = query.order_by(sort_col.asc())
+        order = sort_col.asc()
     else:
-        query = query.order_by(sort_col.desc())
+        order = sort_col.desc()
+    if sort_by == "range_position":
+        order = order.nullslast()
+    query = query.order_by(order)
 
     # Count total before pagination
     total = query.count()
@@ -160,6 +177,20 @@ def list_products(
 
     items = []
     for r in rows:
+        # Compute range_position inline for response
+        rp = None
+        if (
+            r.all_time_high is not None
+            and r.all_time_low is not None
+            and r.all_time_high > r.all_time_low
+            and r.market_price is not None
+        ):
+            rp = round(
+                (r.market_price - r.all_time_low) / (r.all_time_high - r.all_time_low),
+                4,
+            )
+            rp = max(0.0, min(1.0, rp))
+
         items.append(
             {
                 "productId": r.product_id,
@@ -193,7 +224,14 @@ def list_products(
                     round(r.pct_change_1yr, 2) if r.pct_change_1yr is not None else None
                 ),
                 "allTimeLow": r.all_time_low,
+                "allTimeLowDate": (
+                    r.all_time_low_date.isoformat() if r.all_time_low_date else None
+                ),
                 "allTimeHigh": r.all_time_high,
+                "allTimeHighDate": (
+                    r.all_time_high_date.isoformat() if r.all_time_high_date else None
+                ),
+                "rangePosition": rp,
             }
         )
 

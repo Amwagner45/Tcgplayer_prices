@@ -1,7 +1,7 @@
 import { Box, Paper, Typography } from "@mui/material";
 import TrendingDownIcon from "@mui/icons-material/TrendingDown";
 import InventoryIcon from "@mui/icons-material/Inventory";
-import LocalOfferIcon from "@mui/icons-material/LocalOffer";
+import SportsEsportsIcon from "@mui/icons-material/SportsEsports";
 import { useStats } from "../hooks/useProducts";
 
 interface Props {
@@ -12,47 +12,56 @@ function StatCard({
     icon,
     label,
     value,
-    color,
+    gradient,
 }: {
     icon: React.ReactNode;
     label: string;
     value: string | number;
-    color: string;
+    gradient: string;
 }) {
     return (
         <Paper
-            elevation={0}
             sx={{
-                p: 2,
+                p: 2.5,
                 borderRadius: 3,
                 border: "1px solid",
                 borderColor: "divider",
                 flex: 1,
-                minWidth: 160,
+                minWidth: 180,
                 display: "flex",
                 alignItems: "center",
                 gap: 2,
+                transition: "transform 0.2s ease, box-shadow 0.2s ease",
+                "&:hover": {
+                    transform: "translateY(-2px)",
+                    boxShadow: "0 8px 24px rgba(0,0,0,0.08)",
+                },
             }}
         >
             <Box
                 sx={{
-                    width: 44,
-                    height: 44,
-                    borderRadius: 2,
+                    width: 48,
+                    height: 48,
+                    borderRadius: 2.5,
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    bgcolor: `${color}15`,
-                    color: color,
+                    background: gradient,
+                    color: "#fff",
+                    flexShrink: 0,
                 }}
             >
                 {icon}
             </Box>
             <Box>
-                <Typography variant="body2" color="text.secondary">
+                <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ fontSize: "0.75rem", fontWeight: 500 }}
+                >
                     {label}
                 </Typography>
-                <Typography variant="h5" fontWeight={700}>
+                <Typography variant="h5" fontWeight={800} sx={{ lineHeight: 1.2 }}>
                     {value}
                 </Typography>
             </Box>
@@ -67,7 +76,9 @@ export default function StatsBar({ categoryId }: Props) {
         stats?.categories.reduce((sum, c) => sum + c.totalCards, 0) ?? 0;
 
     const gameBreakdown =
-        stats?.categories.map((c) => `${c.displayName}: ${c.totalCards.toLocaleString()}`).join(" | ") ?? "";
+        stats?.categories
+            .map((c) => `${c.displayName}: ${c.totalCards.toLocaleString()}`)
+            .join("  ·  ") ?? "";
 
     return (
         <Box sx={{ mb: 3 }}>
@@ -76,23 +87,27 @@ export default function StatsBar({ categoryId }: Props) {
                     icon={<InventoryIcon />}
                     label="Total Cards"
                     value={totalCards.toLocaleString()}
-                    color="#2196f3"
+                    gradient="linear-gradient(135deg, #2962ff, #768fff)"
                 />
                 <StatCard
                     icon={<TrendingDownIcon />}
                     label="Deals (>20% below mid)"
                     value={(stats?.bigDeals ?? 0).toLocaleString()}
-                    color="#4caf50"
+                    gradient="linear-gradient(135deg, #00c853, #69f0ae)"
                 />
                 <StatCard
-                    icon={<LocalOfferIcon />}
+                    icon={<SportsEsportsIcon />}
                     label="Games Tracked"
                     value={stats?.categories.length ?? 0}
-                    color="#ff9800"
+                    gradient="linear-gradient(135deg, #ff9100, #ffca28)"
                 />
             </Box>
             {gameBreakdown && (
-                <Typography variant="caption" color="text.secondary">
+                <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ fontSize: "0.7rem" }}
+                >
                     {gameBreakdown}
                 </Typography>
             )}

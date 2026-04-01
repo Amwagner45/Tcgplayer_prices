@@ -35,6 +35,8 @@ export async function fetchProducts(
     if (filters.maxPrice !== undefined) params.max_price = filters.maxPrice;
     if (filters.search) params.search = filters.search;
     if (filters.watchlistId) params.watchlist_id = filters.watchlistId;
+    if (filters.maxRangePosition !== undefined)
+        params.max_range_position = filters.maxRangePosition;
 
     const { data } = await api.get<ProductsResponse>("/products", { params });
     return data;
