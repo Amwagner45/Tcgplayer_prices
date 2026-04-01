@@ -148,6 +148,17 @@ def list_products(
         else_=None,
     ).label("range_position")
 
+    # potential_gain: how much the card could gain to reach ATH, as a ratio
+    potential_gain = case(
+        (
+            (PriceSummary.all_time_high.isnot(None))
+            & (Price.market_price.isnot(None))
+            & (Price.market_price > 0),
+            (PriceSummary.all_time_high - Price.market_price) / Price.market_price,
+        ),
+        else_=None,
+    ).label("potential_gain")
+
     sort_map = {
         "pct_below_mid": pct_below_mid,
         "market_price": Price.market_price,
@@ -159,13 +170,14 @@ def list_products(
         "pct_change_90d": PriceSummary.pct_change_90d,
         "pct_change_1yr": PriceSummary.pct_change_1yr,
         "range_position": range_position,
+        "potential_gain": potential_gain,
     }
     sort_col = sort_map.get(sort_by, pct_below_mid)
     if sort_dir == "asc":
         order = sort_col.asc()
     else:
         order = sort_col.desc()
-    if sort_by == "range_position":
+    if sort_by in ("range_position", "potential_gain"):
         order = order.nullslast()
     query = query.order_by(order)
 
@@ -190,6 +202,14 @@ def list_products(
                 4,
             )
             rp = max(0.0, min(1.0, rp))
+
+        pg = None
+        if (
+            r.all_time_high is not None
+            and r.market_price is not None
+            and r.market_price > 0
+        ):
+            pg = round((r.all_time_high - r.market_price) / r.market_price * 100, 2)
 
         items.append(
             {
@@ -232,6 +252,7 @@ def list_products(
                     r.all_time_high_date.isoformat() if r.all_time_high_date else None
                 ),
                 "rangePosition": rp,
+                "potentialGain": pg,
             }
         )
 

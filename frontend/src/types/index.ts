@@ -26,6 +26,7 @@ export interface ProductItem {
     allTimeHigh: number | null;
     allTimeHighDate: string | null;
     rangePosition: number | null;
+    potentialGain: number | null;
 }
 
 export interface ProductsResponse {
