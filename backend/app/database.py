@@ -2,10 +2,10 @@ import os
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 
-DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "tcgprices.db")
-DATABASE_URL = f"sqlite:///{DB_PATH}"
+DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "tcgprices.duckdb")
+DATABASE_URL = f"duckdb:///{DB_PATH}"
 
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 

@@ -1,5 +1,14 @@
 from datetime import datetime, date
-from sqlalchemy import String, Integer, Float, DateTime, Date, ForeignKey, Index
+from sqlalchemy import (
+    String,
+    Integer,
+    Float,
+    DateTime,
+    Date,
+    ForeignKey,
+    Index,
+    Sequence,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
@@ -7,7 +16,9 @@ from app.database import Base
 class Category(Base):
     __tablename__ = "categories"
 
-    category_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    category_id: Mapped[int] = mapped_column(
+        Integer, primary_key=True, autoincrement=False
+    )
     name: Mapped[str] = mapped_column(String, nullable=False)
     display_name: Mapped[str] = mapped_column(String, nullable=False)
 
@@ -18,7 +29,9 @@ class Category(Base):
 class Group(Base):
     __tablename__ = "groups"
 
-    group_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    group_id: Mapped[int] = mapped_column(
+        Integer, primary_key=True, autoincrement=False
+    )
     name: Mapped[str] = mapped_column(String, nullable=False)
     abbreviation: Mapped[str] = mapped_column(String, nullable=True)
     category_id: Mapped[int] = mapped_column(
@@ -33,7 +46,9 @@ class Group(Base):
 class Product(Base):
     __tablename__ = "products"
 
-    product_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    product_id: Mapped[int] = mapped_column(
+        Integer, primary_key=True, autoincrement=False
+    )
     name: Mapped[str] = mapped_column(String, nullable=False)
     clean_name: Mapped[str | None] = mapped_column(String, nullable=True)
     image_url: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -81,9 +96,7 @@ class Price(Base):
 class PriceHistory(Base):
     __tablename__ = "price_history"
 
-    product_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("products.product_id"), primary_key=True
-    )
+    product_id: Mapped[int] = mapped_column(Integer, primary_key=True)
     sub_type_name: Mapped[str] = mapped_column(String, primary_key=True)
     date: Mapped[date] = mapped_column(Date, primary_key=True)
     low_price: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -124,10 +137,19 @@ class SkippedArchiveDate(Base):
     reason: Mapped[str] = mapped_column(String, nullable=False)
 
 
+watchlist_id_seq = Sequence("watchlists_id_seq")
+
+
 class Watchlist(Base):
     __tablename__ = "watchlists"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(
+        Integer,
+        watchlist_id_seq,
+        server_default=watchlist_id_seq.next_value(),
+        primary_key=True,
+        autoincrement=False,
+    )
     name: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
@@ -140,7 +162,7 @@ class WatchlistItem(Base):
     __tablename__ = "watchlist_items"
 
     watchlist_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("watchlists.id", ondelete="CASCADE"), primary_key=True
+        Integer, ForeignKey("watchlists.id"), primary_key=True
     )
     product_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("products.product_id"), primary_key=True
@@ -150,10 +172,19 @@ class WatchlistItem(Base):
     watchlist: Mapped["Watchlist"] = relationship(back_populates="items")
 
 
+saved_filter_id_seq = Sequence("saved_filters_id_seq")
+
+
 class SavedFilter(Base):
     __tablename__ = "saved_filters"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(
+        Integer,
+        saved_filter_id_seq,
+        server_default=saved_filter_id_seq.next_value(),
+        primary_key=True,
+        autoincrement=False,
+    )
     name: Mapped[str] = mapped_column(String, nullable=False)
     filter_json: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

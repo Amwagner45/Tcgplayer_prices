@@ -319,133 +319,102 @@ def fetch_live_today(client: TcgcsvClient, db):
 
 
 def rebuild_price_summary(db):
-    """Rebuild the price_summary table from price_history data."""
+    """Rebuild the price_summary table using DuckDB analytical query.
+
+    Replaces the old row-by-row approach (~7 queries per product) with a
+    single set-based query that DuckDB parallelizes and vectorizes.
+    """
     print(f"\n{'='*60}")
     print("Rebuilding price_summary table...")
     print(f"{'='*60}")
 
-    # Clear existing summary
-    db.query(PriceSummary).delete()
-    db.flush()
+    db.execute(text("DELETE FROM price_summary"))
 
-    today = date.today()
-    date_30d = today - timedelta(days=30)
-    date_90d = today - timedelta(days=90)
-    date_1yr = today - timedelta(days=365)
-
-    # Get all distinct (product_id, sub_type_name) combos from current prices
-    combos = db.query(Price.product_id, Price.sub_type_name).all()
-    print(f"  Processing {len(combos)} product/variant combinations...")
-
-    batch = []
-    for i, (product_id, sub_type_name) in enumerate(combos):
-        # Current market price
-        current = (
-            db.query(Price.market_price)
-            .filter_by(product_id=product_id, sub_type_name=sub_type_name)
-            .scalar()
+    db.execute(
+        text(
+            """
+        INSERT INTO price_summary (
+            product_id, sub_type_name,
+            market_price_30d_ago, market_price_90d_ago, market_price_1yr_ago,
+            pct_change_30d, pct_change_90d, pct_change_1yr,
+            all_time_low, all_time_low_date, all_time_high, all_time_high_date
         )
-
-        # Helper: get nearest market price to a target date (within 7 day window)
-        def get_price_near_date(target_date: date) -> float | None:
-            row = (
-                db.query(PriceHistory.market_price)
-                .filter(
-                    PriceHistory.product_id == product_id,
-                    PriceHistory.sub_type_name == sub_type_name,
-                    PriceHistory.market_price.isnot(None),
-                    PriceHistory.date.between(
-                        target_date - timedelta(days=7), target_date + timedelta(days=7)
-                    ),
-                )
-                .order_by(
-                    func.abs(
-                        func.julianday(PriceHistory.date) - func.julianday(target_date)
-                    )
-                )
-                .first()
-            )
-            return row[0] if row else None
-
-        def pct_change(old: float | None, new: float | None) -> float | None:
-            if old is None or new is None or old == 0:
-                return None
-            return round((new - old) / old * 100, 2)
-
-        price_30d = get_price_near_date(date_30d)
-        price_90d = get_price_near_date(date_90d)
-        price_1yr = get_price_near_date(date_1yr)
-
-        # All-time low/high (skip first 30 days of data for this product/variant)
-        earliest_date_row = (
-            db.query(func.min(PriceHistory.date))
-            .filter(
-                PriceHistory.product_id == product_id,
-                PriceHistory.sub_type_name == sub_type_name,
-            )
-            .scalar()
+        WITH earliest AS (
+            SELECT product_id, sub_type_name,
+                   MIN(date) + 30 AS cutoff
+            FROM price_history
+            GROUP BY product_id, sub_type_name
+        ),
+        p30 AS (
+            SELECT DISTINCT ON (product_id, sub_type_name)
+                product_id, sub_type_name, market_price
+            FROM price_history
+            WHERE market_price IS NOT NULL
+              AND date BETWEEN CURRENT_DATE - 37 AND CURRENT_DATE - 23
+            ORDER BY product_id, sub_type_name,
+                     ABS(date - (CURRENT_DATE - 30))
+        ),
+        p90 AS (
+            SELECT DISTINCT ON (product_id, sub_type_name)
+                product_id, sub_type_name, market_price
+            FROM price_history
+            WHERE market_price IS NOT NULL
+              AND date BETWEEN CURRENT_DATE - 97 AND CURRENT_DATE - 83
+            ORDER BY product_id, sub_type_name,
+                     ABS(date - (CURRENT_DATE - 90))
+        ),
+        p1yr AS (
+            SELECT DISTINCT ON (product_id, sub_type_name)
+                product_id, sub_type_name, market_price
+            FROM price_history
+            WHERE market_price IS NOT NULL
+              AND date BETWEEN CURRENT_DATE - 372 AND CURRENT_DATE - 358
+            ORDER BY product_id, sub_type_name,
+                     ABS(date - (CURRENT_DATE - 365))
+        ),
+        atl_ath AS (
+            SELECT ph.product_id, ph.sub_type_name,
+                   MIN(ph.market_price) AS all_time_low,
+                   ARG_MIN(ph.date, ph.market_price) AS all_time_low_date,
+                   MAX(ph.market_price) AS all_time_high,
+                   ARG_MAX(ph.date, ph.market_price) AS all_time_high_date
+            FROM price_history ph
+            JOIN earliest e USING (product_id, sub_type_name)
+            WHERE ph.market_price IS NOT NULL
+              AND ph.date >= e.cutoff
+            GROUP BY ph.product_id, ph.sub_type_name
         )
-        atl_cutoff = (
-            earliest_date_row + timedelta(days=30) if earliest_date_row else None
+        SELECT
+            c.product_id,
+            c.sub_type_name,
+            p30.market_price,
+            p90.market_price,
+            p1yr.market_price,
+            CASE WHEN p30.market_price IS NOT NULL AND p30.market_price != 0
+                 THEN ROUND((c.market_price - p30.market_price)
+                            / p30.market_price * 100, 2) END,
+            CASE WHEN p90.market_price IS NOT NULL AND p90.market_price != 0
+                 THEN ROUND((c.market_price - p90.market_price)
+                            / p90.market_price * 100, 2) END,
+            CASE WHEN p1yr.market_price IS NOT NULL AND p1yr.market_price != 0
+                 THEN ROUND((c.market_price - p1yr.market_price)
+                            / p1yr.market_price * 100, 2) END,
+            aa.all_time_low,
+            aa.all_time_low_date,
+            aa.all_time_high,
+            aa.all_time_high_date
+        FROM prices c
+        LEFT JOIN p30 USING (product_id, sub_type_name)
+        LEFT JOIN p90 USING (product_id, sub_type_name)
+        LEFT JOIN p1yr USING (product_id, sub_type_name)
+        LEFT JOIN atl_ath aa USING (product_id, sub_type_name)
+    """
         )
+    )
 
-        atl_row = None
-        ath_row = None
-        if atl_cutoff:
-            atl_row = (
-                db.query(PriceHistory.market_price, PriceHistory.date)
-                .filter(
-                    PriceHistory.product_id == product_id,
-                    PriceHistory.sub_type_name == sub_type_name,
-                    PriceHistory.market_price.isnot(None),
-                    PriceHistory.date >= atl_cutoff,
-                )
-                .order_by(PriceHistory.market_price.asc())
-                .first()
-            )
-            ath_row = (
-                db.query(PriceHistory.market_price, PriceHistory.date)
-                .filter(
-                    PriceHistory.product_id == product_id,
-                    PriceHistory.sub_type_name == sub_type_name,
-                    PriceHistory.market_price.isnot(None),
-                    PriceHistory.date >= atl_cutoff,
-                )
-                .order_by(PriceHistory.market_price.desc())
-                .first()
-            )
-
-        batch.append(
-            {
-                "product_id": product_id,
-                "sub_type_name": sub_type_name,
-                "market_price_30d_ago": price_30d,
-                "market_price_90d_ago": price_90d,
-                "market_price_1yr_ago": price_1yr,
-                "pct_change_30d": pct_change(price_30d, current),
-                "pct_change_90d": pct_change(price_90d, current),
-                "pct_change_1yr": pct_change(price_1yr, current),
-                "all_time_low": atl_row[0] if atl_row else None,
-                "all_time_low_date": atl_row[1] if atl_row else None,
-                "all_time_high": ath_row[0] if ath_row else None,
-                "all_time_high_date": ath_row[1] if ath_row else None,
-            }
-        )
-
-        if len(batch) >= BATCH_SIZE:
-            db.execute(PriceSummary.__table__.insert(), batch)
-            db.flush()
-            batch = []
-
-        if (i + 1) % 10000 == 0:
-            print(f"  Processed {i+1}/{len(combos)}...")
-
-    if batch:
-        db.execute(PriceSummary.__table__.insert(), batch)
-        db.flush()
-
+    count = db.execute(text("SELECT COUNT(*) FROM price_summary")).scalar()
     db.commit()
-    print(f"  Done — {len(combos)} summaries written.")
+    print(f"  Done — {count:,} summaries written.")
 
 
 def main():

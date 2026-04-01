@@ -4,3 +4,5 @@ sqlalchemy==2.0.35
 requests==2.32.3
 pydantic==2.9.2
 py7zr==0.22.0
+duckdb>=1.0.0
+duckdb-engine>=0.13.0
