@@ -155,6 +155,79 @@ def backfill_archive_date(client: TcgcsvClient, db, archive_date: date) -> int:
     return len(rows)
 
 
+def get_categories_with_history(db) -> set[int]:
+    """Return category IDs that have at least one price_history row."""
+    rows = (
+        db.query(Product.category_id)
+        .join(PriceHistory, PriceHistory.product_id == Product.product_id)
+        .distinct()
+        .all()
+    )
+    return {r[0] for r in rows}
+
+
+def backfill_new_categories(client: TcgcsvClient, db):
+    """Re-download archives for categories that have no history yet.
+
+    When a new category is added to TARGET_CATEGORIES, the normal backfill
+    skips dates that already have data (from other categories).  This
+    function identifies categories with zero history rows and re-processes
+    all non-skipped archive dates to pull in their data.
+    """
+    cats_with_data = get_categories_with_history(db)
+    new_cat_ids = TARGET_CATEGORY_IDS - cats_with_data
+
+    if not new_cat_ids:
+        return
+
+    new_cat_names = [TARGET_CATEGORIES[c] for c in new_cat_ids]
+    print(f"\n{'='*60}")
+    print(f"Backfilling archives for new categories: {', '.join(new_cat_names)}")
+    print(f"{'='*60}")
+
+    skipped_dates = get_skipped_dates(db)
+    existing_dates = sorted(get_dates_with_history(db))
+
+    if not existing_dates:
+        print("  No existing archive dates to reprocess.")
+        return
+
+    print(f"  Re-processing {len(existing_dates)} archive dates")
+    print(f"  From: {existing_dates[0]}")
+    print(f"  To:   {existing_dates[-1]}")
+
+    saved_target = TARGET_CATEGORY_IDS.copy()
+    # Temporarily restrict parsing to only the new categories
+    TARGET_CATEGORY_IDS.clear()
+    TARGET_CATEGORY_IDS.update(new_cat_ids)
+
+    total_rows = 0
+    try:
+        for i, archive_date in enumerate(existing_dates):
+            if archive_date in skipped_dates:
+                continue
+            try:
+                count = backfill_archive_date(client, db, archive_date)
+                total_rows += count
+                if count:
+                    print(
+                        f"  [{archive_date}] {count:,} price entries "
+                        f"({i+1} of {len(existing_dates)})"
+                    )
+            except Exception as e:
+                reason = str(e)[:200]
+                print(
+                    f"  [{archive_date}] SKIPPED — {reason} "
+                    f"({i+1} of {len(existing_dates)})"
+                )
+                db.rollback()
+    finally:
+        TARGET_CATEGORY_IDS.clear()
+        TARGET_CATEGORY_IDS.update(saved_target)
+
+    print(f"  New-category backfill done — {total_rows:,} total rows added.")
+
+
 def fetch_live_today(client: TcgcsvClient, db):
     """Fetch today's live data: categories, groups, products, prices."""
     now = datetime.utcnow()
@@ -472,8 +545,11 @@ def main():
         else:
             print("\nNo archive dates to backfill.")
 
-        # # ── Phase 2: Fetch today's live data ──
-        # fetch_live_today(client, db)
+        # ── Phase 1b: Backfill archives for newly added categories ──
+        backfill_new_categories(client, db)
+
+        # ── Phase 2: Fetch today's live data ──
+        fetch_live_today(client, db)
 
         # ── Phase 3: Rebuild price summary ──
         rebuild_price_summary(db)
