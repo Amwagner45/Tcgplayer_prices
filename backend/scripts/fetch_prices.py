@@ -35,11 +35,12 @@ from app.models import (
 )
 from services.tcgcsv_client import TcgcsvClient
 
-# Pokemon=3, Flesh and Blood=62, One Piece=68
+# Pokemon=3, Flesh and Blood=62, One Piece=68, Riftbound=89
 TARGET_CATEGORIES = {
     3: "Pokemon",
     62: "Flesh and Blood TCG",
     68: "One Piece Card Game",
+    89: "Riftbound: League of Legends Trading Card Game",
 }
 
 TARGET_CATEGORY_IDS = set(TARGET_CATEGORIES.keys())
