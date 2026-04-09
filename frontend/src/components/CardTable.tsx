@@ -37,15 +37,6 @@ function getDealBgColor(pct: number | null): string {
     return "transparent";
 }
 
-function getDealChipColor(
-    pct: number | null
-): "success" | "warning" | "default" {
-    if (pct === null) return "default";
-    if (pct >= 25) return "success";
-    if (pct >= 15) return "warning";
-    return "default";
-}
-
 function formatPctChange(pct: number | null): string {
     if (pct === null) return "—";
     const sign = pct > 0 ? "+" : "";

@@ -226,7 +226,7 @@ export async function fetchPriceHistory(
     productId: number,
     days: number = 365
 ): Promise<PriceHistoryResponse> {
-    if (STATIC_MODE) return { history: [] };
+    if (STATIC_MODE) return { productId, history: [] };
     const { data } = await api.get<PriceHistoryResponse>(
         `/products/${productId}/history`,
         { params: { days } }
@@ -237,7 +237,7 @@ export async function fetchPriceHistory(
 export async function fetchPriceComparisons(
     productId: number
 ): Promise<PriceComparisonsResponse> {
-    if (STATIC_MODE) return { comparisons: [] };
+    if (STATIC_MODE) return { productId, subTypeName: "Normal", currentPrice: null, thirtyDaysAgo: null, ninetyDaysAgo: null, oneYearAgo: null, allTimeLow: null, allTimeHigh: null };
     const { data } = await api.get<PriceComparisonsResponse>(
         `/products/${productId}/comparisons`
     );
