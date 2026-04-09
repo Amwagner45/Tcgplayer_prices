@@ -43,6 +43,11 @@ TARGET_CATEGORIES = {
     89: "Riftbound: League of Legends Trading Card Game",
 }
 
+# Per-category earliest archive date (categories not listed use ARCHIVE_START_DATE)
+CATEGORY_START_DATES = {
+    89: date(2025, 10, 1),  # Riftbound launched Oct 2025
+}
+
 TARGET_CATEGORY_IDS = set(TARGET_CATEGORIES.keys())
 ARCHIVE_START_DATE = date(2024, 2, 8)
 BATCH_SIZE = 5000  # rows per bulk insert commit
@@ -145,14 +150,40 @@ def backfill_archive_date(client: TcgcsvClient, db, archive_date: date) -> int:
     if not rows:
         return 0
 
-    # Bulk insert in batches
+    # Bulk insert in batches, skipping duplicates via INSERT OR IGNORE
+    inserted_before = db.execute(text("SELECT count(*) FROM price_history")).scalar()
+
     for i in range(0, len(rows), BATCH_SIZE):
         batch = rows[i : i + BATCH_SIZE]
-        db.execute(PriceHistory.__table__.insert(), batch)
+        placeholders = ", ".join(
+            "(:pid{0}, :stn{0}, :dt{0}, :lp{0}, :mp{0}, :hp{0}, :mkp{0}, :dlp{0})".format(
+                j
+            )
+            for j in range(len(batch))
+        )
+        params = {}
+        for j, r in enumerate(batch):
+            params[f"pid{j}"] = r["product_id"]
+            params[f"stn{j}"] = r["sub_type_name"]
+            params[f"dt{j}"] = str(r["date"])
+            params[f"lp{j}"] = r["low_price"]
+            params[f"mp{j}"] = r["mid_price"]
+            params[f"hp{j}"] = r["high_price"]
+            params[f"mkp{j}"] = r["market_price"]
+            params[f"dlp{j}"] = r["direct_low_price"]
+
+        sql = text(
+            "INSERT OR IGNORE INTO price_history "
+            "(product_id, sub_type_name, date, low_price, mid_price, "
+            f"high_price, market_price, direct_low_price) VALUES {placeholders}"
+        )
+        db.execute(sql, params)
         db.flush()
 
     db.commit()
-    return len(rows)
+
+    inserted_after = db.execute(text("SELECT count(*) FROM price_history")).scalar()
+    return inserted_after - inserted_before
 
 
 def get_categories_with_history(db) -> set[int]:
@@ -186,10 +217,23 @@ def backfill_new_categories(client: TcgcsvClient, db):
     print(f"{'='*60}")
 
     skipped_dates = get_skipped_dates(db)
-    existing_dates = sorted(get_dates_with_history(db))
+    all_existing_dates = sorted(get_dates_with_history(db))
+
+    if not all_existing_dates:
+        print("  No existing archive dates to reprocess.")
+        return
+
+    # Skip dates before the earliest start date of the new categories
+    earliest_start = min(
+        CATEGORY_START_DATES.get(c, ARCHIVE_START_DATE) for c in new_cat_ids
+    )
+    existing_dates = [d for d in all_existing_dates if d >= earliest_start]
+    skipped_count = len(all_existing_dates) - len(existing_dates)
+    if skipped_count:
+        print(f"  Skipping {skipped_count} archive dates before {earliest_start}")
 
     if not existing_dates:
-        print("  No existing archive dates to reprocess.")
+        print("  No archive dates to reprocess after filtering.")
         return
 
     print(f"  Re-processing {len(existing_dates)} archive dates")
@@ -201,7 +245,11 @@ def backfill_new_categories(client: TcgcsvClient, db):
     TARGET_CATEGORY_IDS.clear()
     TARGET_CATEGORY_IDS.update(new_cat_ids)
 
+    import time as _time
+
     total_rows = 0
+    dates_with_data = 0
+    t_start = _time.monotonic()
     try:
         for i, archive_date in enumerate(existing_dates):
             if archive_date in skipped_dates:
@@ -210,10 +258,19 @@ def backfill_new_categories(client: TcgcsvClient, db):
                 count = backfill_archive_date(client, db, archive_date)
                 total_rows += count
                 if count:
-                    print(
-                        f"  [{archive_date}] {count:,} price entries "
-                        f"({i+1} of {len(existing_dates)})"
-                    )
+                    dates_with_data += 1
+
+                # Progress line every date — show elapsed / ETA
+                elapsed = _time.monotonic() - t_start
+                pct = (i + 1) / len(existing_dates)
+                eta = (elapsed / pct - elapsed) if pct > 0 else 0
+                status = f"{count:,} rows" if count else "no data"
+                print(
+                    f"  [{archive_date}] {status}  "
+                    f"({i+1}/{len(existing_dates)}  "
+                    f"elapsed {elapsed:.0f}s  ETA {eta:.0f}s)",
+                    flush=True,
+                )
             except Exception as e:
                 reason = str(e)[:200]
                 print(
@@ -225,17 +282,22 @@ def backfill_new_categories(client: TcgcsvClient, db):
         TARGET_CATEGORY_IDS.clear()
         TARGET_CATEGORY_IDS.update(saved_target)
 
-    print(f"  New-category backfill done — {total_rows:,} total rows added.")
+    total_time = _time.monotonic() - t_start
+    print(
+        f"  New-category backfill done — {total_rows:,} total rows added "
+        f"across {dates_with_data} dates in {total_time:.0f}s."
+    )
 
 
-def fetch_live_today(client: TcgcsvClient, db):
-    """Fetch today's live data: categories, groups, products, prices."""
-    now = datetime.utcnow()
-    today = date.today()
+def sync_catalog(client: TcgcsvClient, db):
+    """Fast sync: fetch categories, groups, and products (no prices).
 
+    Only fetches products for groups that are new (not already in the DB).
+    This ensures all products exist so archive backfill can work.
+    """
     for cat_id, cat_name in TARGET_CATEGORIES.items():
         print(f"\n{'='*60}")
-        print(f"Fetching live data: {cat_name} (ID: {cat_id})")
+        print(f"Syncing catalog: {cat_name} (ID: {cat_id})")
         print(f"{'='*60}")
 
         # Upsert category
@@ -244,34 +306,46 @@ def fetch_live_today(client: TcgcsvClient, db):
             db.add(Category(category_id=cat_id, name=cat_name, display_name=cat_name))
         db.flush()
 
-        # Fetch groups
+        # Fetch groups from API
         groups = client.fetch_groups(cat_id)
-        print(f"  Found {len(groups)} groups/sets")
 
-        for i, grp in enumerate(groups):
+        # Check which groups already exist in DB
+        existing_group_ids = {
+            r[0]
+            for r in db.query(Group.group_id).filter(Group.category_id == cat_id).all()
+        }
+        new_groups = [g for g in groups if g["groupId"] not in existing_group_ids]
+
+        print(
+            f"  Groups: {len(groups)} total, {len(existing_group_ids)} in DB, "
+            f"{len(new_groups)} new"
+        )
+
+        if not new_groups:
+            print("  Catalog up to date — skipping")
+            continue
+
+        for i, grp in enumerate(new_groups):
             group_id = grp["groupId"]
             group_name = grp["name"]
-            print(f"\n  [{i+1}/{len(groups)}] {group_name} (ID: {group_id})")
 
-            # Upsert group
-            existing_grp = db.get(Group, group_id)
-            if not existing_grp:
-                db.add(
-                    Group(
-                        group_id=group_id,
-                        name=group_name,
-                        abbreviation=grp.get("abbreviation"),
-                        category_id=cat_id,
-                        published_on=grp.get("publishedOn"),
-                    )
+            # Insert new group
+            db.add(
+                Group(
+                    group_id=group_id,
+                    name=group_name,
+                    abbreviation=grp.get("abbreviation"),
+                    category_id=cat_id,
+                    published_on=grp.get("publishedOn"),
                 )
+            )
             db.flush()
 
-            # Fetch products
+            # Fetch products for this new group
             try:
                 products = client.fetch_products(cat_id, group_id)
             except Exception as e:
-                print(f"    Warning: Error fetching products: {e}")
+                print(f"    Warning: Error fetching products for {group_name}: {e}")
                 continue
 
             card_count = 0
@@ -284,15 +358,7 @@ def fetch_live_today(client: TcgcsvClient, db):
                 card_count += 1
 
                 existing_prod = db.get(Product, pid)
-                if existing_prod:
-                    existing_prod.name = prod["name"]
-                    existing_prod.clean_name = prod.get("cleanName")
-                    existing_prod.image_url = prod.get("imageUrl")
-                    existing_prod.url = prod.get("url")
-                    existing_prod.rarity = extract_extended(extended, "Rarity")
-                    existing_prod.card_number = extract_extended(extended, "Number")
-                    existing_prod.card_type = extract_extended(extended, "Card Type")
-                else:
+                if not existing_prod:
                     db.add(
                         Product(
                             product_id=pid,
@@ -308,88 +374,47 @@ def fetch_live_today(client: TcgcsvClient, db):
                         )
                     )
 
-            # Fetch prices
-            try:
-                prices = client.fetch_prices(cat_id, group_id)
-            except Exception as e:
-                print(f"    Warning: Error fetching prices: {e}")
-                db.flush()
-                continue
-
-            card_product_ids = {
-                p["productId"]
-                for p in products
-                if is_card_product(p.get("extendedData", []))
-            }
-
-            price_count = 0
-            history_rows = []
-            for pr in prices:
-                pid = pr["productId"]
-                if pid not in card_product_ids:
-                    continue
-
-                sub_type = pr.get("subTypeName", "Normal")
-                price_count += 1
-
-                # Upsert current price snapshot
-                existing_price = (
-                    db.query(Price)
-                    .filter_by(product_id=pid, sub_type_name=sub_type)
-                    .first()
-                )
-                if existing_price:
-                    existing_price.low_price = pr.get("lowPrice")
-                    existing_price.mid_price = pr.get("midPrice")
-                    existing_price.high_price = pr.get("highPrice")
-                    existing_price.market_price = pr.get("marketPrice")
-                    existing_price.direct_low_price = pr.get("directLowPrice")
-                    existing_price.fetched_at = now
-                else:
-                    db.add(
-                        Price(
-                            product_id=pid,
-                            sub_type_name=sub_type,
-                            low_price=pr.get("lowPrice"),
-                            mid_price=pr.get("midPrice"),
-                            high_price=pr.get("highPrice"),
-                            market_price=pr.get("marketPrice"),
-                            direct_low_price=pr.get("directLowPrice"),
-                            fetched_at=now,
-                        )
-                    )
-
-                # Also record in history
-                history_rows.append(
-                    {
-                        "product_id": pid,
-                        "sub_type_name": sub_type,
-                        "date": today,
-                        "low_price": pr.get("lowPrice"),
-                        "mid_price": pr.get("midPrice"),
-                        "high_price": pr.get("highPrice"),
-                        "market_price": pr.get("marketPrice"),
-                        "direct_low_price": pr.get("directLowPrice"),
-                    }
-                )
-
-            db.flush()
-
-            # Insert today's history (skip if already exists)
-            if history_rows:
-                existing_today = (
-                    db.query(PriceHistory).filter(PriceHistory.date == today).first()
-                )
-                if not existing_today:
-                    for j in range(0, len(history_rows), BATCH_SIZE):
-                        batch = history_rows[j : j + BATCH_SIZE]
-                        db.execute(PriceHistory.__table__.insert(), batch)
-                        db.flush()
-
-            print(f"    Cards: {card_count}, Price entries: {price_count}")
+            print(f"  [{i+1}/{len(new_groups)}] {group_name}: {card_count} cards")
 
         db.commit()
-        print(f"\n  Committed {cat_name} data")
+        print(f"  Committed {len(new_groups)} new groups for {cat_name}")
+
+
+def update_current_prices(db):
+    """Copy the most recent archive prices into the current `prices` table.
+
+    This avoids the slow per-group live API fetch by using the latest
+    price_history row for each product/sub_type as the current price.
+    """
+    print(f"\n{'='*60}")
+    print("Updating current prices from latest archive data")
+    print(f"{'='*60}")
+
+    db.execute(text("DELETE FROM prices"))
+    db.execute(
+        text(
+            """
+        INSERT INTO prices (product_id, sub_type_name, low_price, mid_price,
+                           high_price, market_price, direct_low_price, fetched_at)
+        SELECT ph.product_id, ph.sub_type_name, ph.low_price, ph.mid_price,
+               ph.high_price, ph.market_price, ph.direct_low_price,
+               CURRENT_TIMESTAMP
+        FROM price_history ph
+        INNER JOIN (
+            SELECT product_id, sub_type_name, MAX(date) AS max_date
+            FROM price_history
+            GROUP BY product_id, sub_type_name
+        ) latest
+        ON ph.product_id = latest.product_id
+           AND ph.sub_type_name = latest.sub_type_name
+           AND ph.date = latest.max_date
+        WHERE ph.product_id IN (SELECT product_id FROM products)
+        """
+        )
+    )
+    count = db.execute(text("SELECT count(*) FROM prices")).scalar()
+    db.commit()
+    print(f"  Updated {count:,} current price entries")
 
 
 def rebuild_price_summary(db):
@@ -545,14 +570,28 @@ def main():
         else:
             print("\nNo archive dates to backfill.")
 
+        # ── Phase 2: Sync catalog (categories, groups, products — no prices) ──
+        sync_catalog(client, db)
+
         # ── Phase 1b: Backfill archives for newly added categories ──
         backfill_new_categories(client, db)
 
-        # ── Phase 2: Fetch today's live data ──
-        fetch_live_today(client, db)
+        # ── Phase 2b: Update current prices from latest archive data ──
+        update_current_prices(db)
 
         # ── Phase 3: Rebuild price summary ──
         rebuild_price_summary(db)
+
+        # ── Phase 4: Export opportunities JSON for static site ──
+        try:
+            from scripts.export_opportunities import export_opportunities
+
+            print(f"\n{'='*60}")
+            print("Exporting opportunities JSON for GitHub Pages")
+            print(f"{'='*60}")
+            export_opportunities()
+        except Exception as e:
+            print(f"  Export failed (non-fatal): {e}")
 
         # ── Final summary ──
         print(f"\n{'='*60}")
@@ -560,12 +599,14 @@ def main():
         print(f"{'='*60}")
         for cat_id, cat_name in TARGET_CATEGORIES.items():
             count = db.query(Product).filter_by(category_id=cat_id).count()
-            price_ct = (
-                db.query(Price)
-                .join(Product)
-                .filter(Product.category_id == cat_id)
-                .count()
-            )
+            price_ct = db.execute(
+                text(
+                    "SELECT count(*) FROM prices p "
+                    "JOIN products pr ON p.product_id = pr.product_id "
+                    "WHERE pr.category_id = :cid"
+                ),
+                {"cid": cat_id},
+            ).scalar()
             print(f"  {cat_name}: {count} cards, {price_ct} price entries")
 
         history_count = db.query(func.count(PriceHistory.product_id)).scalar()

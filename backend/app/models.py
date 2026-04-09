@@ -65,7 +65,10 @@ class Product(Base):
 
     category: Mapped["Category"] = relationship(back_populates="products")
     group: Mapped["Group"] = relationship(back_populates="products")
-    prices: Mapped[list["Price"]] = relationship(back_populates="product")
+    prices: Mapped[list["Price"]] = relationship(
+        back_populates="product",
+        primaryjoin="Product.product_id == foreign(Price.product_id)",
+    )
 
     __table_args__ = (
         Index("ix_products_category_id", "category_id"),
@@ -77,9 +80,7 @@ class Product(Base):
 class Price(Base):
     __tablename__ = "prices"
 
-    product_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("products.product_id"), primary_key=True
-    )
+    product_id: Mapped[int] = mapped_column(Integer, primary_key=True)
     sub_type_name: Mapped[str] = mapped_column(String, primary_key=True)
     low_price: Mapped[float | None] = mapped_column(Float, nullable=True)
     mid_price: Mapped[float | None] = mapped_column(Float, nullable=True)
@@ -88,7 +89,11 @@ class Price(Base):
     direct_low_price: Mapped[float | None] = mapped_column(Float, nullable=True)
     fetched_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
-    product: Mapped["Product"] = relationship(back_populates="prices")
+    product: Mapped["Product"] = relationship(
+        back_populates="prices",
+        primaryjoin="Price.product_id == Product.product_id",
+        foreign_keys="[Price.product_id]",
+    )
 
     __table_args__ = (Index("ix_prices_market_price", "market_price"),)
 
@@ -114,9 +119,7 @@ class PriceHistory(Base):
 class PriceSummary(Base):
     __tablename__ = "price_summary"
 
-    product_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("products.product_id"), primary_key=True
-    )
+    product_id: Mapped[int] = mapped_column(Integer, primary_key=True)
     sub_type_name: Mapped[str] = mapped_column(String, primary_key=True)
     market_price_30d_ago: Mapped[float | None] = mapped_column(Float, nullable=True)
     market_price_90d_ago: Mapped[float | None] = mapped_column(Float, nullable=True)

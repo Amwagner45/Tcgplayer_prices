@@ -9,6 +9,7 @@ import CardTable from "./CardTable";
 import CardDetailModal from "./CardDetailModal";
 import OpportunitiesPanel from "./OpportunitiesPanel";
 import WatchlistView from "./WatchlistView";
+import { STATIC_MODE } from "../services/api";
 import type { ProductFilters } from "../types";
 
 const DEFAULT_FILTERS: ProductFilters = {
@@ -21,7 +22,7 @@ const DEFAULT_FILTERS: ProductFilters = {
 export default function Dashboard() {
     const [filters, setFilters] = useState<ProductFilters>(DEFAULT_FILTERS);
     const [selectedCard, setSelectedCard] = useState<number | null>(null);
-    const [activeTab, setActiveTab] = useState(0);
+    const [activeTab, setActiveTab] = useState(STATIC_MODE ? 1 : 0);
 
     const handleFilterChange = useCallback(
         (partial: Partial<ProductFilters>) => {
@@ -81,7 +82,7 @@ export default function Dashboard() {
                                     variant="caption"
                                     sx={{ opacity: 0.5, fontSize: "0.7rem" }}
                                 >
-                                    Pokemon · Flesh and Blood · One Piece
+                                    Pokemon · Flesh and Blood · One Piece · Riftbound
                                 </Typography>
                             </Box>
                         </Box>
@@ -103,21 +104,28 @@ export default function Dashboard() {
                             },
                         }}
                     >
-                        <Tab
-                            icon={<ViewListIcon />}
-                            iconPosition="start"
-                            label="Browse"
-                        />
+                        {!STATIC_MODE && (
+                            <Tab
+                                icon={<ViewListIcon />}
+                                iconPosition="start"
+                                label="Browse"
+                                value={0}
+                            />
+                        )}
                         <Tab
                             icon={<WhatshotIcon />}
                             iconPosition="start"
                             label="Opportunities"
+                            value={1}
                         />
-                        <Tab
-                            icon={<PlaylistPlayIcon />}
-                            iconPosition="start"
-                            label="Watchlists"
-                        />
+                        {!STATIC_MODE && (
+                            <Tab
+                                icon={<PlaylistPlayIcon />}
+                                iconPosition="start"
+                                label="Watchlists"
+                                value={2}
+                            />
+                        )}
                     </Tabs>
                 </Container>
             </Box>
