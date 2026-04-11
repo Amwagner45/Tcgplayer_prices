@@ -1,3 +1,7 @@
 tcgprices.db*
 *.duckdb*
+*.db.backup
+__pycache__/
+node_modules/
+.gh-pages-deploy/
 __pycache__/

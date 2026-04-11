@@ -13,6 +13,7 @@ Usage:
 import sys
 import os
 import json
+import shutil
 import tempfile
 from datetime import datetime, date, timedelta
 from pathlib import Path
@@ -519,6 +520,17 @@ def rebuild_price_summary(db):
 def main():
     client = TcgcsvClient()
     init_db()
+
+    # Back up the database before any work — protects against data loss
+    db_path = os.path.join(
+        os.path.dirname(os.path.dirname(__file__)), "tcgprices.duckdb"
+    )
+    backup_path = db_path + ".backup"
+    if os.path.exists(db_path) and os.path.getsize(db_path) > 300_000:
+        shutil.copy2(db_path, backup_path)
+        size_mb = os.path.getsize(db_path) / (1024 * 1024)
+        print(f"Backed up database ({size_mb:.1f} MB) to {backup_path}")
+
     db = SessionLocal()
 
     try:
