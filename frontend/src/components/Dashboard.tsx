@@ -1,15 +1,18 @@
 import { useState, useCallback } from "react";
-import { Box, Typography, Tabs, Tab, Container } from "@mui/material";
+import { Box, Typography, Tabs, Tab, Container, Button } from "@mui/material";
 import ViewListIcon from "@mui/icons-material/ViewList";
 import WhatshotIcon from "@mui/icons-material/Whatshot";
 import PlaylistPlayIcon from "@mui/icons-material/PlaylistPlay";
+import CloudDownloadIcon from "@mui/icons-material/CloudDownload";
 import FilterPanel from "./FilterPanel";
 import StatsBar from "./StatsBar";
 import CardTable from "./CardTable";
 import CardDetailModal from "./CardDetailModal";
 import OpportunitiesPanel from "./OpportunitiesPanel";
 import WatchlistView from "./WatchlistView";
+import FetchStatusModal from "./FetchStatusModal";
 import { STATIC_MODE } from "../services/api";
+import { useFetchPrices } from "../hooks/useFetchPrices";
 import type { ProductFilters } from "../types";
 
 const DEFAULT_FILTERS: ProductFilters = {
@@ -23,6 +26,9 @@ export default function Dashboard() {
     const [filters, setFilters] = useState<ProductFilters>(DEFAULT_FILTERS);
     const [selectedCard, setSelectedCard] = useState<number | null>(null);
     const [activeTab, setActiveTab] = useState(STATIC_MODE ? 1 : 0);
+    const [fetchModalOpen, setFetchModalOpen] = useState(false);
+    const { status, isLoading, startFetch, stopFetch, resetStatus } =
+        useFetchPrices();
 
     const handleFilterChange = useCallback(
         (partial: Partial<ProductFilters>) => {
@@ -30,6 +36,17 @@ export default function Dashboard() {
         },
         []
     );
+
+    const handleOpenFetchModal = useCallback(() => {
+        resetStatus();
+        setFetchModalOpen(true);
+        // Automatically start the fetch
+        startFetch();
+    }, [startFetch, resetStatus]);
+
+    const handleCloseFetchModal = useCallback(() => {
+        setFetchModalOpen(false);
+    }, []);
 
     return (
         <Box sx={{ minHeight: "100vh", bgcolor: "background.default" }}>
@@ -86,6 +103,23 @@ export default function Dashboard() {
                                 </Typography>
                             </Box>
                         </Box>
+                        <Button
+                            variant="contained"
+                            startIcon={<CloudDownloadIcon />}
+                            onClick={handleOpenFetchModal}
+                            disabled={isLoading}
+                            sx={{
+                                textTransform: "none",
+                                fontWeight: 600,
+                                px: 2,
+                                bgcolor: "rgba(41, 98, 255, 0.8)",
+                                "&:hover": {
+                                    bgcolor: "#2962ff",
+                                },
+                            }}
+                        >
+                            {isLoading ? "Fetching..." : "Fetch Prices"}
+                        </Button>
                     </Box>
 
                     <Tabs
@@ -170,6 +204,16 @@ export default function Dashboard() {
             <CardDetailModal
                 productId={selectedCard}
                 onClose={() => setSelectedCard(null)}
+            />
+
+            <FetchStatusModal
+                open={fetchModalOpen}
+                status={status.status}
+                progress={status.progress}
+                output={status.output}
+                error={status.error}
+                onClose={handleCloseFetchModal}
+                onStop={stopFetch}
             />
         </Box>
     );

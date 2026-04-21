@@ -1,4 +1,5 @@
 import time
+import os
 import requests
 from typing import Any
 
@@ -6,12 +7,20 @@ from typing import Any
 BASE_URL = "https://tcgcsv.com/tcgplayer"
 ARCHIVE_URL = "https://tcgcsv.com/archive/tcgplayer"
 REQUEST_DELAY = 0.5  # seconds between requests to be respectful
+DEFAULT_USER_AGENT = os.environ.get(
+    "TCGCSV_USER_AGENT", "TCGPlayer-Price-Dashboard/1.0"
+)
 
 
 class TcgcsvClient:
     def __init__(self):
         self.session = requests.Session()
-        self.session.headers.update({"Accept": "application/json"})
+        self.session.headers.update(
+            {
+                "Accept": "application/json",
+                "User-Agent": DEFAULT_USER_AGENT,
+            }
+        )
 
     def _get(self, url: str) -> dict[str, Any]:
         time.sleep(REQUEST_DELAY)

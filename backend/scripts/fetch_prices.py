@@ -19,6 +19,7 @@ from datetime import datetime, date, timedelta
 from pathlib import Path
 
 import py7zr
+import requests
 
 # Add parent dir to path so imports work when run as `python -m scripts.fetch_prices`
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
@@ -52,6 +53,48 @@ CATEGORY_START_DATES = {
 TARGET_CATEGORY_IDS = set(TARGET_CATEGORIES.keys())
 ARCHIVE_START_DATE = date(2024, 2, 8)
 BATCH_SIZE = 5000  # rows per bulk insert commit
+BACKEND_DIR = Path(__file__).resolve().parent.parent
+DB_PATH = BACKEND_DIR / "tcgprices.duckdb"
+BACKUP_PATH = Path(f"{DB_PATH}.backup")
+MIN_BACKUP_SIZE_BYTES = 300_000
+
+
+def backup_database() -> bool:
+    """Create a best-effort backup before mutating the database.
+
+    On Windows the copy fails if the DuckDB file is already open, so this must run
+    before any connection is initialized in the current process.
+    """
+    if not DB_PATH.exists() or DB_PATH.stat().st_size <= MIN_BACKUP_SIZE_BYTES:
+        return False
+
+    try:
+        shutil.copy2(DB_PATH, BACKUP_PATH)
+    except PermissionError as exc:
+        print(f"Skipping database backup because the file is locked: {exc}")
+        return False
+
+    size_mb = DB_PATH.stat().st_size / (1024 * 1024)
+    print(f"Backed up database ({size_mb:.1f} MB) to {BACKUP_PATH}")
+    return True
+
+
+def _is_database_lock_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return (
+        "conflicting lock" in message
+        or "could not set lock" in message
+        or "being used by another process" in message
+        or "permission denied" in message
+    )
+
+
+def should_persist_skipped_archive_date(exc: Exception) -> bool:
+    """Only persist archive failures that are expected to be permanent."""
+    if isinstance(exc, requests.HTTPError):
+        status_code = exc.response.status_code if exc.response is not None else None
+        return status_code in {404, 410}
+    return False
 
 
 def extract_extended(extended_data: list[dict], key: str) -> str | None:
@@ -517,21 +560,23 @@ def rebuild_price_summary(db):
     print(f"  Done — {count:,} summaries written.")
 
 
-def main():
+def run_fetch_prices(*, backup_db: bool = True):
     client = TcgcsvClient()
-    init_db()
 
-    # Back up the database before any work — protects against data loss
-    db_path = os.path.join(
-        os.path.dirname(os.path.dirname(__file__)), "tcgprices.duckdb"
-    )
-    backup_path = db_path + ".backup"
-    if os.path.exists(db_path) and os.path.getsize(db_path) > 300_000:
-        shutil.copy2(db_path, backup_path)
-        size_mb = os.path.getsize(db_path) / (1024 * 1024)
-        print(f"Backed up database ({size_mb:.1f} MB) to {backup_path}")
+    # Back up before opening any DuckDB connection in this process.
+    if backup_db:
+        backup_database()
 
-    db = SessionLocal()
+    try:
+        init_db()
+        db = SessionLocal()
+    except Exception as exc:
+        if _is_database_lock_error(exc):
+            raise RuntimeError(
+                "Could not open the DuckDB database. Stop the backend/app process "
+                "before running fetch_prices from the command line."
+            ) from exc
+        raise
 
     try:
         # ── Phase 1: Backfill from archives ──
@@ -575,10 +620,10 @@ def main():
                         f"  [{archive_date}] SKIPPED — {reason} "
                         f"({i+1} of {len(dates_to_fetch)})"
                     )
-                    # Record as permanently skipped
                     db.rollback()
-                    db.merge(SkippedArchiveDate(date=archive_date, reason=reason))
-                    db.commit()
+                    if should_persist_skipped_archive_date(e):
+                        db.merge(SkippedArchiveDate(date=archive_date, reason=reason))
+                        db.commit()
         else:
             print("\nNo archive dates to backfill.")
 
@@ -634,6 +679,10 @@ def main():
         raise
     finally:
         db.close()
+
+
+def main():
+    run_fetch_prices()
 
 
 if __name__ == "__main__":

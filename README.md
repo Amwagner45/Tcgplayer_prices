@@ -121,7 +121,9 @@ Then open **http://localhost:5173** in your browser.
 ./fetch_prices.sh
 ```
 
-This stops the backend server, fetches new data, then restarts the server. DuckDB only allows single-process access, so the server must be stopped during data fetches.
+This runs the unified fetch script from `backend/`.
+
+Make sure the backend/app is not running first. DuckDB only allows one process to own the database file at a time, so a standalone fetch must run with the app stopped.
 
 ## API Docs
 
