@@ -52,6 +52,18 @@ function getGainColor(gain: number): string {
     return "#999";
 }
 
+function getSignalColor(signal: string | null): string {
+    if (signal === "Strong buy setup") return "#2e7d32";
+    if (signal === "Momentum watch") return "#1565c0";
+    if (signal === "Near low, wait") return "#ef6c00";
+    return "#757575";
+}
+
+function formatTrendLabel(value: string | null): string {
+    if (!value) return "No trend";
+    return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
 function OpportunityCard({
     item,
     onClick,
@@ -63,6 +75,7 @@ function OpportunityCard({
     const rangeColor = rp !== null ? getRangeColor(rp) : "#999";
     const pg = item.potentialGain;
     const gainColor = pg !== null ? getGainColor(pg) : "#999";
+    const signalColor = getSignalColor(item.buySignal);
 
     return (
         <Paper
@@ -218,6 +231,82 @@ function OpportunityCard({
                     </Box>
                 )}
 
+                <Box sx={{ display: "flex", gap: 0.75, flexWrap: "wrap", mb: 1.5 }}>
+                    {item.opportunityScore !== null && (
+                        <Chip
+                            label={`Score ${item.opportunityScore.toFixed(0)}`}
+                            size="small"
+                            sx={{
+                                fontWeight: 700,
+                                bgcolor: "#e3f2fd",
+                                color: "#1565c0",
+                                height: 22,
+                            }}
+                        />
+                    )}
+                    {item.buySignal && (
+                        <Chip
+                            label={item.buySignal}
+                            size="small"
+                            sx={{
+                                fontWeight: 700,
+                                color: signalColor,
+                                bgcolor: `${signalColor}15`,
+                                border: `1px solid ${signalColor}35`,
+                                height: 22,
+                            }}
+                        />
+                    )}
+                </Box>
+
+                <Box
+                    sx={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr 1fr",
+                        gap: 1,
+                        mb: 1.5,
+                    }}
+                >
+                    <Box
+                        sx={{
+                            p: 1,
+                            borderRadius: 2,
+                            bgcolor: "rgba(25, 118, 210, 0.06)",
+                        }}
+                    >
+                        <Typography variant="caption" color="text.secondary">
+                            SMA Trend
+                        </Typography>
+                        <Typography variant="body2" fontWeight={700}>
+                            {formatTrendLabel(item.smaTrend)}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                            {item.priceVsSma20Pct !== null
+                                ? `${item.priceVsSma20Pct > 0 ? "+" : ""}${item.priceVsSma20Pct.toFixed(1)}% vs SMA20`
+                                : "Market price only"}
+                        </Typography>
+                    </Box>
+                    <Box
+                        sx={{
+                            p: 1,
+                            borderRadius: 2,
+                            bgcolor: "rgba(46, 125, 50, 0.06)",
+                        }}
+                    >
+                        <Typography variant="caption" color="text.secondary">
+                            MACD
+                        </Typography>
+                        <Typography variant="body2" fontWeight={700}>
+                            {formatTrendLabel(item.macdTrend)}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                            {item.macdHistogram !== null
+                                ? `Hist ${item.macdHistogram > 0 ? "+" : ""}${item.macdHistogram.toFixed(3)}`
+                                : "Awaiting signal"}
+                        </Typography>
+                    </Box>
+                </Box>
+
                 {/* Range bar */}
                 {rp !== null && (
                     <Box sx={{ mb: 1.5 }}>
@@ -320,7 +409,7 @@ function OpportunityCard({
 }
 
 export default function OpportunitiesPanel({ onSelectCard }: Props) {
-    const [minPrice, setMinPrice] = useState("5");
+    const [minPrice, setMinPrice] = useState("50");
     const [maxPrice, setMaxPrice] = useState("");
     const [maxRange, setMaxRange] = useState(0.3);
     const [categoryId, setCategoryId] = useState<number | undefined>(undefined);
@@ -329,7 +418,7 @@ export default function OpportunitiesPanel({ onSelectCard }: Props) {
     const [subTypes, setSubTypes] = useState<string[]>([]);
     const [searchInput, setSearchInput] = useState("");
     const [search, setSearch] = useState<string | undefined>(undefined);
-    const [sortBy, setSortBy] = useState("potential_gain");
+    const [sortBy, setSortBy] = useState("opportunity_score");
     const [page, setPage] = useState(1);
     const { data: filterOptions } = useFilters(categoryId);
 
@@ -347,7 +436,10 @@ export default function OpportunitiesPanel({ onSelectCard }: Props) {
 
     const filters: ProductFilters = {
         sortBy,
-        sortDir: sortBy === "potential_gain" ? "desc" : "asc",
+        sortDir:
+            sortBy === "market_price" || sortBy === "range_position"
+                ? "asc"
+                : "desc",
         page,
         pageSize: 24,
         minPrice: !isNaN(minVal) && minVal > 0 ? minVal : undefined,
@@ -401,11 +493,11 @@ export default function OpportunitiesPanel({ onSelectCard }: Props) {
                     <WhatshotIcon sx={{ color: "#ff9100", fontSize: 28 }} />
                     <Box>
                         <Typography variant="h6" fontWeight={800}>
-                            Near All-Time Low Opportunities
+                            Market-Price Opportunity Signals
                         </Typography>
                         <Typography variant="body2" sx={{ opacity: 0.6 }}>
-                            Cards trading near their historical lows with high
-                            potential gain to ATH
+                            $50+ cards near their historical lows, ranked with
+                            market-price SMA and MACD momentum signals
                         </Typography>
                     </Box>
                     {data && (
@@ -500,6 +592,9 @@ export default function OpportunitiesPanel({ onSelectCard }: Props) {
                         >
                             <MenuItem value="potential_gain">
                                 Highest Potential Gain
+                            </MenuItem>
+                            <MenuItem value="opportunity_score">
+                                Best Signal Score
                             </MenuItem>
                             <MenuItem value="range_position">
                                 Closest to ATL

@@ -226,7 +226,26 @@ export async function fetchPriceHistory(
     productId: number,
     days: number = 365
 ): Promise<PriceHistoryResponse> {
-    if (STATIC_MODE) return { productId, history: [] };
+    if (STATIC_MODE) {
+        return {
+            productId,
+            history: [],
+            snapshot: {
+                marketPrice: null,
+                sma20: null,
+                sma50: null,
+                sma200: null,
+                macd: null,
+                macdSignal: null,
+                macdHistogram: null,
+                priceVsSma20Pct: null,
+                priceVsSma50Pct: null,
+                priceVsSma200Pct: null,
+                smaTrend: null,
+                macdTrend: null,
+            },
+        };
+    }
     const { data } = await api.get<PriceHistoryResponse>(
         `/products/${productId}/history`,
         { params: { days } }

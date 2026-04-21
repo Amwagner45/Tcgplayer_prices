@@ -27,6 +27,19 @@ export interface ProductItem {
     allTimeHighDate: string | null;
     rangePosition: number | null;
     potentialGain: number | null;
+    sma20: number | null;
+    sma50: number | null;
+    sma200: number | null;
+    macd: number | null;
+    macdSignal: number | null;
+    macdHistogram: number | null;
+    priceVsSma20Pct: number | null;
+    priceVsSma50Pct: number | null;
+    priceVsSma200Pct: number | null;
+    smaTrend: string | null;
+    macdTrend: string | null;
+    opportunityScore: number | null;
+    buySignal: string | null;
 }
 
 export interface ProductsResponse {
@@ -102,11 +115,33 @@ export interface PriceHistoryPoint {
     marketPrice: number | null;
     midPrice: number | null;
     lowPrice: number | null;
+    sma20: number | null;
+    sma50: number | null;
+    sma200: number | null;
+    macd: number | null;
+    macdSignal: number | null;
+    macdHistogram: number | null;
+}
+
+export interface TechnicalSnapshot {
+    marketPrice: number | null;
+    sma20: number | null;
+    sma50: number | null;
+    sma200: number | null;
+    macd: number | null;
+    macdSignal: number | null;
+    macdHistogram: number | null;
+    priceVsSma20Pct: number | null;
+    priceVsSma50Pct: number | null;
+    priceVsSma200Pct: number | null;
+    smaTrend: string | null;
+    macdTrend: string | null;
 }
 
 export interface PriceHistoryResponse {
     productId: number;
     history: PriceHistoryPoint[];
+    snapshot: TechnicalSnapshot;
 }
 
 export interface PriceComparisonPeriod {

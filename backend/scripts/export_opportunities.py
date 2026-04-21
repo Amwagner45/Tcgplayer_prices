@@ -18,10 +18,15 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from sqlalchemy import case
 from app.database import SessionLocal, init_db
+from app.market_indicators import (
+    calculate_opportunity_score,
+    classify_buy_signal,
+    load_indicator_snapshots,
+)
 from app.models import Product, Price, PriceSummary, Group, Category
 
 # Match OpportunitiesPanel defaults
-MIN_PRICE = 5.0
+MIN_PRICE = 50.0
 MAX_RANGE_POSITION = 0.30
 MAX_ITEMS = 500
 
@@ -112,9 +117,13 @@ def export_opportunities():
         )
 
         rows = query.all()
+        indicator_snapshots = load_indicator_snapshots(db, rows)
 
         items = []
         for r in rows:
+            indicator_snapshot = indicator_snapshots.get(
+                (r.product_id, r.sub_type_name), {}
+            )
             rp = None
             if (
                 r.all_time_high is not None
@@ -136,6 +145,15 @@ def export_opportunities():
                 and r.market_price > 0
             ):
                 pg = round((r.all_time_high - r.market_price) / r.market_price * 100, 2)
+
+            opportunity_score = calculate_opportunity_score(
+                range_position=rp,
+                potential_gain_pct=pg,
+                pct_change_30d=(
+                    round(r.pct_change_30d, 2) if r.pct_change_30d is not None else None
+                ),
+                snapshot=indicator_snapshot,
+            )
 
             pct_below_mid = None
             if r.mid_price and r.mid_price > 0 and r.market_price is not None:
@@ -191,8 +209,31 @@ def export_opportunities():
                     ),
                     "rangePosition": rp,
                     "potentialGain": pg,
+                    "sma20": indicator_snapshot.get("sma20"),
+                    "sma50": indicator_snapshot.get("sma50"),
+                    "sma200": indicator_snapshot.get("sma200"),
+                    "macd": indicator_snapshot.get("macd"),
+                    "macdSignal": indicator_snapshot.get("macdSignal"),
+                    "macdHistogram": indicator_snapshot.get("macdHistogram"),
+                    "priceVsSma20Pct": indicator_snapshot.get("priceVsSma20Pct"),
+                    "priceVsSma50Pct": indicator_snapshot.get("priceVsSma50Pct"),
+                    "priceVsSma200Pct": indicator_snapshot.get("priceVsSma200Pct"),
+                    "smaTrend": indicator_snapshot.get("smaTrend"),
+                    "macdTrend": indicator_snapshot.get("macdTrend"),
+                    "opportunityScore": opportunity_score,
+                    "buySignal": classify_buy_signal(
+                        opportunity_score, indicator_snapshot, rp
+                    ),
                 }
             )
+
+        items.sort(
+            key=lambda item: (
+                item["opportunityScore"] is None,
+                -(item["opportunityScore"] or 0),
+                -(item["potentialGain"] or 0),
+            )
+        )
 
         # Build the static data envelope
         payload = {

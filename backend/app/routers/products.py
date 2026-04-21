@@ -4,6 +4,12 @@ from sqlalchemy import func, case
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
+from app.market_indicators import (
+    build_indicator_series,
+    calculate_opportunity_score,
+    classify_buy_signal,
+    load_indicator_snapshots,
+)
 from app.models import (
     Product,
     Price,
@@ -15,6 +21,105 @@ from app.models import (
 )
 
 router = APIRouter(prefix="/api")
+
+
+def serialize_product_rows(rows, indicator_snapshots: dict[tuple[int, str], dict]):
+    items = []
+    for r in rows:
+        indicator_snapshot = indicator_snapshots.get(
+            (r.product_id, r.sub_type_name), {}
+        )
+
+        rp = None
+        if (
+            r.all_time_high is not None
+            and r.all_time_low is not None
+            and r.all_time_high > r.all_time_low
+            and r.market_price is not None
+        ):
+            rp = round(
+                (r.market_price - r.all_time_low) / (r.all_time_high - r.all_time_low),
+                4,
+            )
+            rp = max(0.0, min(1.0, rp))
+
+        pg = None
+        if (
+            r.all_time_high is not None
+            and r.market_price is not None
+            and r.market_price > 0
+        ):
+            pg = round((r.all_time_high - r.market_price) / r.market_price * 100, 2)
+
+        opportunity_score = calculate_opportunity_score(
+            range_position=rp,
+            potential_gain_pct=pg,
+            pct_change_30d=(
+                round(r.pct_change_30d, 2) if r.pct_change_30d is not None else None
+            ),
+            snapshot=indicator_snapshot,
+        )
+
+        items.append(
+            {
+                "productId": r.product_id,
+                "name": r.name,
+                "cleanName": r.clean_name,
+                "imageUrl": r.image_url,
+                "categoryId": r.category_id,
+                "groupId": r.group_id,
+                "url": r.url,
+                "rarity": r.rarity,
+                "cardNumber": r.card_number,
+                "cardType": r.card_type,
+                "groupName": r.group_name,
+                "categoryName": r.category_name,
+                "subTypeName": r.sub_type_name,
+                "lowPrice": r.low_price,
+                "midPrice": r.mid_price,
+                "highPrice": r.high_price,
+                "marketPrice": r.market_price,
+                "directLowPrice": r.direct_low_price,
+                "pctBelowMid": (
+                    round(r.pct_below_mid, 2) if r.pct_below_mid is not None else None
+                ),
+                "pctChange30d": (
+                    round(r.pct_change_30d, 2) if r.pct_change_30d is not None else None
+                ),
+                "pctChange90d": (
+                    round(r.pct_change_90d, 2) if r.pct_change_90d is not None else None
+                ),
+                "pctChange1yr": (
+                    round(r.pct_change_1yr, 2) if r.pct_change_1yr is not None else None
+                ),
+                "allTimeLow": r.all_time_low,
+                "allTimeLowDate": (
+                    r.all_time_low_date.isoformat() if r.all_time_low_date else None
+                ),
+                "allTimeHigh": r.all_time_high,
+                "allTimeHighDate": (
+                    r.all_time_high_date.isoformat() if r.all_time_high_date else None
+                ),
+                "rangePosition": rp,
+                "potentialGain": pg,
+                "sma20": indicator_snapshot.get("sma20"),
+                "sma50": indicator_snapshot.get("sma50"),
+                "sma200": indicator_snapshot.get("sma200"),
+                "macd": indicator_snapshot.get("macd"),
+                "macdSignal": indicator_snapshot.get("macdSignal"),
+                "macdHistogram": indicator_snapshot.get("macdHistogram"),
+                "priceVsSma20Pct": indicator_snapshot.get("priceVsSma20Pct"),
+                "priceVsSma50Pct": indicator_snapshot.get("priceVsSma50Pct"),
+                "priceVsSma200Pct": indicator_snapshot.get("priceVsSma200Pct"),
+                "smaTrend": indicator_snapshot.get("smaTrend"),
+                "macdTrend": indicator_snapshot.get("macdTrend"),
+                "opportunityScore": opportunity_score,
+                "buySignal": classify_buy_signal(
+                    opportunity_score, indicator_snapshot, rp
+                ),
+            }
+        )
+    return items
 
 
 @router.get("/products")
@@ -172,89 +277,43 @@ def list_products(
         "range_position": range_position,
         "potential_gain": potential_gain,
     }
-    sort_col = sort_map.get(sort_by, pct_below_mid)
-    if sort_dir == "asc":
-        order = sort_col.asc()
-    else:
-        order = sort_col.desc()
-    if sort_by in ("range_position", "potential_gain"):
-        order = order.nullslast()
-    query = query.order_by(order)
-
-    # Count total before pagination
     total = query.count()
 
-    # Paginate
-    rows = query.offset((page - 1) * page_size).limit(page_size).all()
-
-    items = []
-    for r in rows:
-        # Compute range_position inline for response
-        rp = None
-        if (
-            r.all_time_high is not None
-            and r.all_time_low is not None
-            and r.all_time_high > r.all_time_low
-            and r.market_price is not None
-        ):
-            rp = round(
-                (r.market_price - r.all_time_low) / (r.all_time_high - r.all_time_low),
-                4,
+    if sort_by == "opportunity_score":
+        candidate_count = min(total, 1500)
+        rows = (
+            query.order_by(
+                potential_gain.desc().nullslast(), range_position.asc().nullslast()
             )
-            rp = max(0.0, min(1.0, rp))
-
-        pg = None
-        if (
-            r.all_time_high is not None
-            and r.market_price is not None
-            and r.market_price > 0
-        ):
-            pg = round((r.all_time_high - r.market_price) / r.market_price * 100, 2)
-
-        items.append(
-            {
-                "productId": r.product_id,
-                "name": r.name,
-                "cleanName": r.clean_name,
-                "imageUrl": r.image_url,
-                "categoryId": r.category_id,
-                "groupId": r.group_id,
-                "url": r.url,
-                "rarity": r.rarity,
-                "cardNumber": r.card_number,
-                "cardType": r.card_type,
-                "groupName": r.group_name,
-                "categoryName": r.category_name,
-                "subTypeName": r.sub_type_name,
-                "lowPrice": r.low_price,
-                "midPrice": r.mid_price,
-                "highPrice": r.high_price,
-                "marketPrice": r.market_price,
-                "directLowPrice": r.direct_low_price,
-                "pctBelowMid": (
-                    round(r.pct_below_mid, 2) if r.pct_below_mid is not None else None
-                ),
-                "pctChange30d": (
-                    round(r.pct_change_30d, 2) if r.pct_change_30d is not None else None
-                ),
-                "pctChange90d": (
-                    round(r.pct_change_90d, 2) if r.pct_change_90d is not None else None
-                ),
-                "pctChange1yr": (
-                    round(r.pct_change_1yr, 2) if r.pct_change_1yr is not None else None
-                ),
-                "allTimeLow": r.all_time_low,
-                "allTimeLowDate": (
-                    r.all_time_low_date.isoformat() if r.all_time_low_date else None
-                ),
-                "allTimeHigh": r.all_time_high,
-                "allTimeHighDate": (
-                    r.all_time_high_date.isoformat() if r.all_time_high_date else None
-                ),
-                "rangePosition": rp,
-                "potentialGain": pg,
-            }
+            .limit(candidate_count)
+            .all()
         )
+        indicator_snapshots = load_indicator_snapshots(db, rows)
+        items = serialize_product_rows(rows, indicator_snapshots)
+        ranked_items = [item for item in items if item["opportunityScore"] is not None]
+        null_items = [item for item in items if item["opportunityScore"] is None]
+        ranked_items.sort(
+            key=lambda item: (
+                item["opportunityScore"],
+                item["potentialGain"] if item["potentialGain"] is not None else -1,
+            ),
+            reverse=sort_dir != "asc",
+        )
+        items = ranked_items + null_items
+        items = items[(page - 1) * page_size : page * page_size]
+    else:
+        sort_col = sort_map.get(sort_by, pct_below_mid)
+        if sort_dir == "asc":
+            order = sort_col.asc()
+        else:
+            order = sort_col.desc()
+        if sort_by in ("range_position", "potential_gain"):
+            order = order.nullslast()
+        rows = (
+            query.order_by(order).offset((page - 1) * page_size).limit(page_size).all()
+        )
+        indicator_snapshots = load_indicator_snapshots(db, rows)
+        items = serialize_product_rows(rows, indicator_snapshots)
 
     return {
         "items": items,
@@ -349,17 +408,12 @@ def get_price_history(
 
     rows = query.all()
 
+    history, snapshot = build_indicator_series(rows)
+
     return {
         "productId": product_id,
-        "history": [
-            {
-                "date": r.date.isoformat(),
-                "marketPrice": r.market_price,
-                "midPrice": r.mid_price,
-                "lowPrice": r.low_price,
-            }
-            for r in rows
-        ],
+        "history": history,
+        "snapshot": snapshot,
     }
 
 

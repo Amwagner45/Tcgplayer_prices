@@ -29,11 +29,14 @@ import StarBorderIcon from "@mui/icons-material/StarBorder";
 import {
     ResponsiveContainer,
     LineChart,
+    ComposedChart,
     Line,
+    Bar,
     XAxis,
     YAxis,
     Tooltip,
     CartesianGrid,
+    ReferenceLine,
 } from "recharts";
 import {
     useProduct,
@@ -65,6 +68,11 @@ function getPctColor(pct: number | null): string {
     if (pct >= 30) return "#4caf50";
     if (pct >= 15) return "#ff9800";
     return "#666";
+}
+
+function formatSignedPercent(value: number | null): string {
+    if (value === null || value === undefined) return "N/A";
+    return `${value > 0 ? "+" : ""}${value.toFixed(1)}%`;
 }
 
 function ComparisonChip({
@@ -108,6 +116,7 @@ export default function CardDetailModal({ productId, onClose }: Props) {
         productId !== null &&
         watchlistItems !== undefined &&
         watchlistItems.includes(productId);
+    const technicals = historyData?.snapshot;
 
     const handleToggleWatchlist = () => {
         if (!selectedWatchlistId || productId === null) return;
@@ -349,6 +358,52 @@ export default function CardDetailModal({ productId, onClose }: Props) {
                                         </Box>
                                     </Box>
                                 )}
+
+                                {technicals && (
+                                    <Box sx={{ mt: 3 }}>
+                                        <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>
+                                            Market-Price Technicals
+                                        </Typography>
+                                        <Box
+                                            sx={{
+                                                display: "grid",
+                                                gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
+                                                gap: 1,
+                                            }}
+                                        >
+                                            <Chip
+                                                label={`SMA20 ${formatPrice(technicals.sma20)}`}
+                                                size="small"
+                                                variant="outlined"
+                                            />
+                                            <Chip
+                                                label={`SMA50 ${formatPrice(technicals.sma50)}`}
+                                                size="small"
+                                                variant="outlined"
+                                            />
+                                            <Chip
+                                                label={`SMA200 ${formatPrice(technicals.sma200)}`}
+                                                size="small"
+                                                variant="outlined"
+                                            />
+                                            <Chip
+                                                label={`vs SMA20 ${formatSignedPercent(technicals.priceVsSma20Pct)}`}
+                                                size="small"
+                                                variant="outlined"
+                                            />
+                                            <Chip
+                                                label={`SMA Trend ${technicals.smaTrend ?? "neutral"}`}
+                                                size="small"
+                                                variant="outlined"
+                                            />
+                                            <Chip
+                                                label={`MACD ${technicals.macdTrend ?? "neutral"}`}
+                                                size="small"
+                                                variant="outlined"
+                                            />
+                                        </Box>
+                                    </Box>
+                                )}
                             </Box>
                         </Box>
 
@@ -372,7 +427,7 @@ export default function CardDetailModal({ productId, onClose }: Props) {
                                     </ToggleButtonGroup>
                                 </Box>
                                 <ResponsiveContainer width="100%" height={250}>
-                                    <LineChart data={historyData.history}>
+                                    <LineChart data={historyData.history} syncId="price-signals">
                                         <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
                                         <XAxis
                                             dataKey="date"
@@ -403,16 +458,84 @@ export default function CardDetailModal({ productId, onClose }: Props) {
                                         />
                                         <Line
                                             type="monotone"
-                                            dataKey="lowPrice"
-                                            stroke="#4caf50"
-                                            strokeWidth={1}
+                                            dataKey="sma20"
+                                            stroke="#ff9800"
+                                            strokeWidth={2}
                                             dot={false}
-                                            name="Low"
+                                            name="SMA20"
                                             connectNulls
-                                            strokeDasharray="4 2"
+                                        />
+                                        <Line
+                                            type="monotone"
+                                            dataKey="sma50"
+                                            stroke="#7b1fa2"
+                                            strokeWidth={2}
+                                            dot={false}
+                                            name="SMA50"
+                                            connectNulls
+                                        />
+                                        <Line
+                                            type="monotone"
+                                            dataKey="sma200"
+                                            stroke="#455a64"
+                                            strokeWidth={2}
+                                            dot={false}
+                                            name="SMA200"
+                                            connectNulls
                                         />
                                     </LineChart>
                                 </ResponsiveContainer>
+
+                                <Box sx={{ mt: 2 }}>
+                                    <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>
+                                        MACD
+                                    </Typography>
+                                    <ResponsiveContainer width="100%" height={160}>
+                                        <ComposedChart data={historyData.history} syncId="price-signals">
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
+                                            <XAxis
+                                                dataKey="date"
+                                                tick={{ fontSize: 11 }}
+                                                tickFormatter={(d: string) => {
+                                                    const dt = new Date(d);
+                                                    return `${dt.getMonth() + 1}/${dt.getDate()}`;
+                                                }}
+                                                minTickGap={30}
+                                            />
+                                            <YAxis tick={{ fontSize: 11 }} width={55} />
+                                            <Tooltip
+                                                formatter={(value) => [Number(value).toFixed(3)]}
+                                                labelFormatter={(label) =>
+                                                    new Date(String(label)).toLocaleDateString()
+                                                }
+                                            />
+                                            <ReferenceLine y={0} stroke="#999" strokeDasharray="4 4" />
+                                            <Bar
+                                                dataKey="macdHistogram"
+                                                fill="#90caf9"
+                                                name="Histogram"
+                                            />
+                                            <Line
+                                                type="monotone"
+                                                dataKey="macd"
+                                                stroke="#1565c0"
+                                                strokeWidth={2}
+                                                dot={false}
+                                                name="MACD"
+                                                connectNulls
+                                            />
+                                            <Line
+                                                type="monotone"
+                                                dataKey="macdSignal"
+                                                stroke="#ef6c00"
+                                                strokeWidth={2}
+                                                dot={false}
+                                                name="Signal"
+                                                connectNulls
+                                            />
+                                        </ComposedChart>
+                                    </ResponsiveContainer>
+                                </Box>
                             </Box>
                         )}
                     </>
