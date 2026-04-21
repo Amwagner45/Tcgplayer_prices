@@ -67,6 +67,26 @@ The database file (`tcgprices.duckdb`) is created automatically in `backend/`.
 
 ## Running
 
+### Start frontend + backend together (single command)
+
+```bash
+./start_app.sh
+```
+
+This starts:
+- Backend on **http://localhost:8000**
+- Frontend on **http://localhost:5173**
+
+Press **Ctrl+C** once to stop both.
+
+### Start frontend + backend together (Python)
+
+```bash
+python start_app.py
+```
+
+This provides the same behavior as `start_app.sh` and is useful if you prefer a Python entrypoint.
+
 ### Start the backend (port 8000)
 
 ```bash
