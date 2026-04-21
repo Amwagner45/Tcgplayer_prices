@@ -144,6 +144,141 @@ export interface PriceHistoryResponse {
     snapshot: TechnicalSnapshot;
 }
 
+export interface MonthlyAnalyticsCard {
+    productId: number;
+    subTypeName: string;
+    name: string;
+    imageUrl: string | null;
+    rarity: string | null;
+    cardNumber: string | null;
+    url: string | null;
+    categoryId: number;
+    categoryName: string;
+    groupId: number;
+    groupName: string;
+    month: string;
+    monthStartPrice: number | null;
+    monthEndPrice: number | null;
+    monthLowPrice: number | null;
+    monthHighPrice: number | null;
+    monthlyReturnPct: number | null;
+    monthlyRangePosition: number | null;
+    reboundPotentialPct: number | null;
+    monthlyOpportunityScore: number | null;
+    observations: number;
+    appearanceCount?: number;
+    performerAppearances?: number;
+    opportunityAppearances?: number;
+    totalAppearances?: number;
+}
+
+export interface MonthlyHighlight {
+    month: string;
+    qualifiedCards: number;
+    averageMonthlyReturn: number | null;
+    topPerformerName: string | null;
+    topPerformerReturn: number | null;
+    topOpportunityName: string | null;
+    topOpportunityScore: number | null;
+}
+
+export interface MonthlyAnalyticsResponse {
+    minPriceApplied: number;
+    latestMonth: string | null;
+    qualifiedCards: number;
+    topPerformers: MonthlyAnalyticsCard[];
+    topOpportunities: MonthlyAnalyticsCard[];
+    recurringCards: MonthlyAnalyticsCard[];
+    monthHighlights: MonthlyHighlight[];
+}
+
+export interface SetBestCardSummary {
+    productId: number;
+    name: string;
+    pctChange30d?: number | null;
+    opportunityScore?: number | null;
+}
+
+export interface SetAnalyticsSummary {
+    groupId: number;
+    groupName: string;
+    categoryId: number;
+    categoryName: string;
+    publishedOn: string | null;
+    trackedCards: number;
+    avgMarketPrice: number | null;
+    avg30dChange: number | null;
+    avg90dChange: number | null;
+    avgOpportunityScore: number | null;
+    opportunityCount: number;
+    bestPerformer: SetBestCardSummary | null;
+    bestOpportunity: SetBestCardSummary | null;
+}
+
+export interface SetAnalyticsHistoryPoint {
+    groupId: number;
+    groupName: string;
+    month: string;
+    qualifiedCards: number;
+    averageMonthlyReturn: number | null;
+    averageMonthEndPrice: number | null;
+    opportunityCards: number;
+}
+
+export interface SetAnalyticsResponse {
+    minPriceApplied: number;
+    setCount: number;
+    sets: SetAnalyticsSummary[];
+    featuredHistory: SetAnalyticsHistoryPoint[];
+}
+
+export interface SetDetailHistoryPoint {
+    month: string;
+    qualifiedCards: number;
+    averageMonthlyReturn: number | null;
+    averageMonthEndPrice: number | null;
+    opportunityCards: number;
+    leaderCardName: string | null;
+    leaderCardReturn: number | null;
+}
+
+export interface SetDetailResponse {
+    groupId: number;
+    groupName: string | null;
+    categoryName?: string | null;
+    minPriceApplied: number;
+    history: SetDetailHistoryPoint[];
+    cards: ProductItem[];
+}
+
+export interface LeaderboardHistoryPoint {
+    month: string;
+    rank: number | null;
+    monthlyReturnPct: number | null;
+}
+
+export interface LeaderboardRow extends ProductItem {
+    compositeScore: number;
+    currentRank: number | null;
+    rank30d: number | null;
+    rank90d: number | null;
+    rank1yr: number | null;
+    rankOpportunity: number | null;
+    latestMonthlyRank: number | null;
+    previousMonthlyRank: number | null;
+    rankDelta: number | null;
+    appearanceCount: number;
+    rankHistory: LeaderboardHistoryPoint[];
+    publishedOn?: string | null;
+}
+
+export interface LeaderboardResponse {
+    metric: string;
+    minPriceApplied: number;
+    latestMonth: string | null;
+    rows: LeaderboardRow[];
+}
+
 export interface PriceComparisonPeriod {
     price: number;
     pctChange: number;

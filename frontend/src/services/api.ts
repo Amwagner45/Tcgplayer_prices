@@ -9,6 +9,10 @@ import type {
     PriceComparisonsResponse,
     WatchlistSummary,
     SavedFilterItem,
+    MonthlyAnalyticsResponse,
+    SetAnalyticsResponse,
+    SetDetailResponse,
+    LeaderboardResponse,
 } from "../types";
 
 export const STATIC_MODE = import.meta.env.VITE_STATIC_MODE === "true";
@@ -224,7 +228,8 @@ export async function fetchFilters(
 
 export async function fetchPriceHistory(
     productId: number,
-    days: number = 365
+    days: number = 365,
+    subType?: string
 ): Promise<PriceHistoryResponse> {
     if (STATIC_MODE) {
         return {
@@ -248,18 +253,126 @@ export async function fetchPriceHistory(
     }
     const { data } = await api.get<PriceHistoryResponse>(
         `/products/${productId}/history`,
-        { params: { days } }
+        { params: { days, sub_type: subType } }
     );
     return data;
 }
 
 export async function fetchPriceComparisons(
-    productId: number
+    productId: number,
+    subType?: string
 ): Promise<PriceComparisonsResponse> {
     if (STATIC_MODE) return { productId, subTypeName: "Normal", currentPrice: null, thirtyDaysAgo: null, ninetyDaysAgo: null, oneYearAgo: null, allTimeLow: null, allTimeHigh: null };
     const { data } = await api.get<PriceComparisonsResponse>(
-        `/products/${productId}/comparisons`
+        `/products/${productId}/comparisons`,
+        { params: { sub_type: subType } }
     );
+    return data;
+}
+
+export async function fetchMonthlyAnalytics(
+    minPrice: number,
+    months: number,
+    limit: number,
+    categoryId?: number
+): Promise<MonthlyAnalyticsResponse> {
+    if (STATIC_MODE) {
+        return {
+            minPriceApplied: minPrice,
+            latestMonth: null,
+            qualifiedCards: 0,
+            topPerformers: [],
+            topOpportunities: [],
+            recurringCards: [],
+            monthHighlights: [],
+        };
+    }
+    const { data } = await api.get<MonthlyAnalyticsResponse>("/analytics/monthly", {
+        params: {
+            min_price: minPrice,
+            months,
+            limit,
+            category_id: categoryId,
+        },
+    });
+    return data;
+}
+
+export async function fetchSetAnalytics(
+    minPrice: number,
+    months: number,
+    limit: number,
+    categoryId?: number
+): Promise<SetAnalyticsResponse> {
+    if (STATIC_MODE) {
+        return {
+            minPriceApplied: minPrice,
+            setCount: 0,
+            sets: [],
+            featuredHistory: [],
+        };
+    }
+    const { data } = await api.get<SetAnalyticsResponse>("/analytics/sets", {
+        params: {
+            min_price: minPrice,
+            months,
+            limit,
+            category_id: categoryId,
+        },
+    });
+    return data;
+}
+
+export async function fetchSetHistory(
+    groupId: number,
+    minPrice: number,
+    months: number
+): Promise<SetDetailResponse> {
+    if (STATIC_MODE) {
+        return {
+            groupId,
+            groupName: null,
+            minPriceApplied: minPrice,
+            history: [],
+            cards: [],
+        };
+    }
+    const { data } = await api.get<SetDetailResponse>(
+        `/analytics/sets/${groupId}/history`,
+        {
+            params: {
+                min_price: minPrice,
+                months,
+            },
+        }
+    );
+    return data;
+}
+
+export async function fetchLeaderboard(
+    minPrice: number,
+    months: number,
+    limit: number,
+    metric: string,
+    categoryId?: number
+): Promise<LeaderboardResponse> {
+    if (STATIC_MODE) {
+        return {
+            metric,
+            minPriceApplied: minPrice,
+            latestMonth: null,
+            rows: [],
+        };
+    }
+    const { data } = await api.get<LeaderboardResponse>("/analytics/leaderboard", {
+        params: {
+            min_price: minPrice,
+            months,
+            limit,
+            metric,
+            category_id: categoryId,
+        },
+    });
     return data;
 }
 

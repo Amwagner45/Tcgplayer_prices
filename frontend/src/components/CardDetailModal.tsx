@@ -1,547 +1,667 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import createPlotlyComponent from "react-plotly.js/factory";
+import Plotly from "plotly.js-basic-dist-min";
+import type { Config, Layout, Shape } from "plotly.js";
 import {
-    Dialog,
-    DialogTitle,
-    DialogContent,
-    IconButton,
     Box,
-    Typography,
-    Chip,
-    Table,
-    TableBody,
-    TableRow,
-    TableCell,
-    TableHead,
-    Link,
-    Skeleton,
-    ToggleButton,
-    ToggleButtonGroup,
-    FormControl,
-    InputLabel,
-    Select,
-    MenuItem,
     Button,
+    Chip,
+    Dialog,
+    DialogContent,
+    DialogTitle,
+    FormControl,
+    IconButton,
+    InputLabel,
+    MenuItem,
+    Paper,
+    Select,
+    Skeleton,
+    Stack,
+    Typography,
 } from "@mui/material";
 import CloseIcon from "@mui/icons-material/Close";
+import OpenInFullIcon from "@mui/icons-material/OpenInFull";
+import CloseFullscreenIcon from "@mui/icons-material/CloseFullscreen";
+import StraightenIcon from "@mui/icons-material/Straighten";
+import EditNoteIcon from "@mui/icons-material/EditNote";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import StarIcon from "@mui/icons-material/Star";
 import StarBorderIcon from "@mui/icons-material/StarBorder";
 import {
-    ResponsiveContainer,
-    LineChart,
-    ComposedChart,
-    Line,
-    Bar,
-    XAxis,
-    YAxis,
-    Tooltip,
-    CartesianGrid,
-    ReferenceLine,
-} from "recharts";
-import {
-    useProduct,
-    usePriceHistory,
-    usePriceComparisons,
-    useWatchlists,
-    useWatchlistItems,
     useAddToWatchlist,
+    usePriceComparisons,
+    usePriceHistoryByVariant,
+    useProduct,
     useRemoveFromWatchlist,
+    useWatchlistItems,
+    useWatchlists,
 } from "../hooks/useProducts";
+
+const Plot = createPlotlyComponent(Plotly);
 
 interface Props {
     productId: number | null;
     onClose: () => void;
 }
 
+interface MeasurePoint {
+    x: string;
+    y: number;
+}
+
+interface SeriesVisibility {
+    marketPrice: boolean;
+    lowPrice: boolean;
+    sma20: boolean;
+    sma50: boolean;
+    sma200: boolean;
+    macd: boolean;
+    macdSignal: boolean;
+    macdHistogram: boolean;
+}
+
+const DEFAULT_SERIES: SeriesVisibility = {
+    marketPrice: true,
+    lowPrice: false,
+    sma20: false,
+    sma50: false,
+    sma200: false,
+    macd: true,
+    macdSignal: true,
+    macdHistogram: true,
+};
+
 function getHighResImage(url: string | null): string {
     if (!url) return "";
     return url.replace("_200w", "_in_1000x1000");
 }
 
-function formatPrice(price: number | null): string {
+function formatPrice(price: number | null | undefined): string {
     if (price === null || price === undefined) return "N/A";
     return `$${price.toFixed(2)}`;
 }
 
-function getPctColor(pct: number | null): string {
-    if (pct === null) return "default";
-    if (pct >= 30) return "#4caf50";
-    if (pct >= 15) return "#ff9800";
-    return "#666";
-}
-
-function formatSignedPercent(value: number | null): string {
+function formatSignedPercent(value: number | null | undefined): string {
     if (value === null || value === undefined) return "N/A";
     return `${value > 0 ? "+" : ""}${value.toFixed(1)}%`;
 }
 
-function ComparisonChip({
-    label,
-    pct,
-    oldPrice,
-}: {
-    label: string;
-    pct: number;
-    oldPrice: number;
-}) {
-    const color = pct <= -5 ? "#4caf50" : pct >= 5 ? "#f44336" : "#999";
-    const sign = pct > 0 ? "+" : "";
+function MetricPill({ label, value }: { label: string; value: string }) {
     return (
-        <Chip
-            label={`${label}: ${sign}${pct.toFixed(1)}% (was $${oldPrice.toFixed(2)})`}
-            size="small"
-            sx={{
-                fontSize: "0.75rem",
-                fontWeight: 600,
-                color,
-                borderColor: color,
-            }}
-            variant="outlined"
-        />
+        <Paper sx={{ p: 1.5, border: "1px solid", borderColor: "divider" }}>
+            <Typography variant="caption" color="text.secondary">
+                {label}
+            </Typography>
+            <Typography variant="body1" fontWeight={700}>
+                {value}
+            </Typography>
+        </Paper>
     );
 }
 
 export default function CardDetailModal({ productId, onClose }: Props) {
     const { data: product, isLoading } = useProduct(productId);
     const [chartDays, setChartDays] = useState(365);
-    const { data: historyData } = usePriceHistory(productId, chartDays);
-    const { data: comparisons } = usePriceComparisons(productId);
-    const { data: watchlists } = useWatchlists();
+    const [selectedSubType, setSelectedSubType] = useState<string | undefined>(undefined);
+    const [fullScreen, setFullScreen] = useState(false);
+    const [measureMode, setMeasureMode] = useState(false);
+    const [measurePoints, setMeasurePoints] = useState<MeasurePoint[]>([]);
     const [selectedWatchlistId, setSelectedWatchlistId] = useState<number | null>(null);
+    const [seriesVisibility, setSeriesVisibility] = useState<SeriesVisibility>(DEFAULT_SERIES);
+    const [userShapes, setUserShapes] = useState<Layout["shapes"]>([]);
+
+    const { data: historyData } = usePriceHistoryByVariant(productId, chartDays, selectedSubType);
+    const { data: comparisons } = usePriceComparisons(productId, selectedSubType);
+    const { data: watchlists } = useWatchlists();
     const { data: watchlistItems } = useWatchlistItems(selectedWatchlistId);
     const addToWatchlist = useAddToWatchlist();
     const removeFromWatchlist = useRemoveFromWatchlist();
+
+    useEffect(() => {
+        if (product?.prices.length) {
+            const nextValue = product.prices.some((item) => item.subTypeName === selectedSubType)
+                ? selectedSubType
+                : product.prices[0].subTypeName;
+            setSelectedSubType(nextValue);
+        }
+    }, [product, selectedSubType]);
+
+    useEffect(() => {
+        setMeasurePoints([]);
+        setUserShapes([]);
+        setSeriesVisibility(DEFAULT_SERIES);
+        setChartDays(365);
+        setSelectedWatchlistId(null);
+    }, [productId]);
 
     const isInWatchlist =
         productId !== null &&
         watchlistItems !== undefined &&
         watchlistItems.includes(productId);
-    const technicals = historyData?.snapshot;
 
     const handleToggleWatchlist = () => {
         if (!selectedWatchlistId || productId === null) return;
         if (isInWatchlist) {
-            removeFromWatchlist.mutate({
-                watchlistId: selectedWatchlistId,
-                productId,
-            });
-        } else {
-            addToWatchlist.mutate({
-                watchlistId: selectedWatchlistId,
-                productId,
-            });
+            removeFromWatchlist.mutate({ watchlistId: selectedWatchlistId, productId });
+            return;
         }
+        addToWatchlist.mutate({ watchlistId: selectedWatchlistId, productId });
     };
+
+    const measurement = useMemo(() => {
+        if (measurePoints.length < 2) return null;
+        const [start, end] = measurePoints;
+        const startTime = new Date(start.x).getTime();
+        const endTime = new Date(end.x).getTime();
+        const dayDelta = Math.round((endTime - startTime) / 86400000);
+        const priceDelta = end.y - start.y;
+        const pctDelta = start.y !== 0 ? (priceDelta / start.y) * 100 : null;
+
+        return {
+            priceDelta,
+            pctDelta,
+            dayDelta,
+            label: `${priceDelta >= 0 ? "+" : ""}${priceDelta.toFixed(2)} (${pctDelta === null ? "N/A" : `${pctDelta >= 0 ? "+" : ""}${pctDelta.toFixed(1)}%`}) over ${dayDelta}d`,
+        };
+    }, [measurePoints]);
+
+    const chartShapes = useMemo(() => {
+        if (!measurement || measurePoints.length < 2) {
+            return userShapes ?? [];
+        }
+        const [start, end] = measurePoints;
+        return [
+            ...(userShapes ?? []),
+            {
+                type: "line",
+                xref: "x",
+                yref: "y",
+                x0: start.x,
+                x1: end.x,
+                y0: start.y,
+                y1: end.y,
+                line: {
+                    color: "#f59e0b",
+                    width: 2,
+                    dash: "dot",
+                },
+            } as Partial<Shape>,
+        ];
+    }, [measurePoints, measurement, userShapes]);
+
+    const plotData = useMemo(() => {
+        const points = historyData?.history ?? [];
+        const dates = points.map((point) => point.date);
+
+        return [
+            {
+                type: "scatter",
+                mode: "lines",
+                name: "Market Price",
+                x: dates,
+                y: points.map((point) => point.marketPrice),
+                line: { color: "#0f6cbd", width: 3 },
+                hovertemplate: "%{x}<br>$%{y:.2f}<extra></extra>",
+                visible: seriesVisibility.marketPrice ? true : "legendonly",
+                yaxis: "y",
+            },
+            {
+                type: "scatter",
+                mode: "lines",
+                name: "Low Price",
+                x: dates,
+                y: points.map((point) => point.lowPrice),
+                line: { color: "#64748b", width: 1.5, dash: "dot" },
+                visible: seriesVisibility.lowPrice ? true : "legendonly",
+                yaxis: "y",
+            },
+            {
+                type: "scatter",
+                mode: "lines",
+                name: "SMA 20",
+                x: dates,
+                y: points.map((point) => point.sma20),
+                line: { color: "#22c55e", width: 2 },
+                visible: seriesVisibility.sma20 ? true : "legendonly",
+                yaxis: "y",
+            },
+            {
+                type: "scatter",
+                mode: "lines",
+                name: "SMA 50",
+                x: dates,
+                y: points.map((point) => point.sma50),
+                line: { color: "#f59e0b", width: 2 },
+                visible: seriesVisibility.sma50 ? true : "legendonly",
+                yaxis: "y",
+            },
+            {
+                type: "scatter",
+                mode: "lines",
+                name: "SMA 200",
+                x: dates,
+                y: points.map((point) => point.sma200),
+                line: { color: "#ef4444", width: 2 },
+                visible: seriesVisibility.sma200 ? true : "legendonly",
+                yaxis: "y",
+            },
+            {
+                type: "scatter",
+                mode: "lines",
+                name: "MACD",
+                x: dates,
+                y: points.map((point) => point.macd),
+                line: { color: "#8b5cf6", width: 2 },
+                visible: seriesVisibility.macd ? true : "legendonly",
+                yaxis: "y2",
+            },
+            {
+                type: "scatter",
+                mode: "lines",
+                name: "MACD Signal",
+                x: dates,
+                y: points.map((point) => point.macdSignal),
+                line: { color: "#f97316", width: 2 },
+                visible: seriesVisibility.macdSignal ? true : "legendonly",
+                yaxis: "y2",
+            },
+            {
+                type: "bar",
+                name: "MACD Histogram",
+                x: dates,
+                y: points.map((point) => point.macdHistogram),
+                marker: {
+                    color: points.map((point) =>
+                        (point.macdHistogram ?? 0) >= 0 ? "#34d399" : "#fb7185"
+                    ),
+                },
+                visible: seriesVisibility.macdHistogram ? true : "legendonly",
+                yaxis: "y2",
+            },
+        ];
+    }, [historyData, seriesVisibility]);
+
+    const plotLayout = useMemo<Partial<Layout>>(
+        () => ({
+            autosize: true,
+            height: fullScreen ? 760 : 520,
+            paper_bgcolor: "transparent",
+            plot_bgcolor: "transparent",
+            margin: { l: 50, r: 40, t: 24, b: 40 },
+            legend: {
+                orientation: "h",
+                x: 0,
+                y: 1.14,
+            },
+            hovermode: "x unified",
+            xaxis: {
+                title: { text: "Date" },
+                rangeslider: { visible: false },
+                showgrid: false,
+            },
+            yaxis: {
+                title: { text: "Price" },
+                domain: [0.34, 1],
+                tickprefix: "$",
+                gridcolor: "rgba(148, 163, 184, 0.18)",
+            },
+            yaxis2: {
+                title: { text: "MACD" },
+                domain: [0, 0.24],
+                gridcolor: "rgba(148, 163, 184, 0.12)",
+                zeroline: true,
+                zerolinecolor: "rgba(148, 163, 184, 0.35)",
+            },
+            shapes: chartShapes,
+            annotations: measurement
+                ? [
+                    {
+                        x: measurePoints[1]?.x,
+                        y: measurePoints[1]?.y,
+                        xref: "x",
+                        yref: "y",
+                        text: measurement.label,
+                        showarrow: true,
+                        arrowhead: 2,
+                        ax: 30,
+                        ay: -30,
+                        bgcolor: "rgba(15, 23, 42, 0.9)",
+                        font: { color: "#fff", size: 11 },
+                    },
+                ]
+                : [],
+            uirevision: `${productId}-${selectedSubType}-${chartDays}`,
+        }),
+        [chartDays, chartShapes, fullScreen, measurePoints, measurement, productId, selectedSubType]
+    );
+
+    const plotConfig = useMemo<Partial<Config>>(
+        () => ({
+            displaylogo: false,
+            responsive: true,
+            scrollZoom: true,
+            doubleClick: "reset+autosize",
+            modeBarButtonsToAdd: ["drawline", "drawopenpath", "eraseshape"] as unknown as Config["modeBarButtonsToAdd"],
+        }),
+        []
+    );
+
+    const technicals = historyData?.snapshot;
 
     return (
         <Dialog
             open={productId !== null}
             onClose={onClose}
-            maxWidth="md"
+            maxWidth="xl"
             fullWidth
-            PaperProps={{ sx: { borderRadius: 3 } }}
+            fullScreen={fullScreen}
+            PaperProps={{
+                sx: {
+                    borderRadius: fullScreen ? 0 : 4,
+                    bgcolor: "background.paper",
+                },
+            }}
         >
-            <DialogTitle
-                sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    pb: 1,
-                }}
-            >
-                <Typography variant="h6" fontWeight={700} noWrap sx={{ flex: 1 }}>
-                    {product?.name ?? "Loading..."}
-                </Typography>
-                <IconButton onClick={onClose} size="small">
-                    <CloseIcon />
-                </IconButton>
+            <DialogTitle sx={{ pb: 1.5 }}>
+                <Box sx={{ display: "flex", justifyContent: "space-between", gap: 2, alignItems: "start" }}>
+                    <Box sx={{ minWidth: 0 }}>
+                        <Typography variant="h5" noWrap>
+                            {product?.name ?? "Loading chart workbench..."}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" noWrap>
+                            {product ? `${product.categoryName} · ${product.groupName}` : "Fetching product detail"}
+                        </Typography>
+                    </Box>
+                    <Box sx={{ display: "flex", gap: 1 }}>
+                        <IconButton onClick={() => setFullScreen((current) => !current)}>
+                            {fullScreen ? <CloseFullscreenIcon /> : <OpenInFullIcon />}
+                        </IconButton>
+                        <IconButton onClick={onClose}>
+                            <CloseIcon />
+                        </IconButton>
+                    </Box>
+                </Box>
             </DialogTitle>
+
             <DialogContent>
                 {isLoading ? (
-                    <Box sx={{ display: "flex", gap: 3 }}>
-                        <Skeleton variant="rectangular" width={300} height={420} />
-                        <Box sx={{ flex: 1 }}>
-                            <Skeleton width="60%" height={32} />
-                            <Skeleton width="40%" height={24} />
-                            <Skeleton width="100%" height={200} sx={{ mt: 2 }} />
-                        </Box>
+                    <Box sx={{ display: "grid", gap: 3, gridTemplateColumns: { xs: "1fr", lg: "280px minmax(0, 1fr)" } }}>
+                        <Skeleton variant="rectangular" height={420} sx={{ borderRadius: 4 }} />
+                        <Skeleton variant="rectangular" height={420} sx={{ borderRadius: 4 }} />
                     </Box>
                 ) : product ? (
-                    <>
-                        <Box sx={{ display: "flex", gap: 3, flexWrap: "wrap" }}>
-                            {/* Card Image */}
-                            <Box sx={{ flexShrink: 0 }}>
+                    <Box
+                        sx={{
+                            display: "grid",
+                            gap: 3,
+                            gridTemplateColumns: { xs: "1fr", lg: fullScreen ? "320px minmax(0, 1fr)" : "280px minmax(0, 1fr)" },
+                            alignItems: "start",
+                        }}
+                    >
+                        <Stack spacing={2.5}>
+                            <Paper sx={{ p: 2.5, border: "1px solid", borderColor: "divider" }}>
                                 {product.imageUrl ? (
                                     <img
                                         src={getHighResImage(product.imageUrl)}
                                         alt={product.name}
-                                        style={{
-                                            width: 300,
-                                            borderRadius: 12,
-                                            boxShadow: "0 4px 20px rgba(0,0,0,0.15)",
-                                        }}
-                                        onError={(e) => {
-                                            (e.target as HTMLImageElement).src = product.imageUrl!;
+                                        style={{ borderRadius: 18, width: "100%" }}
+                                        onError={(event) => {
+                                            (event.target as HTMLImageElement).src = product.imageUrl ?? "";
                                         }}
                                     />
                                 ) : (
-                                    <Box
-                                        sx={{
-                                            width: 300,
-                                            height: 420,
-                                            bgcolor: "grey.100",
-                                            borderRadius: 3,
-                                            display: "flex",
-                                            alignItems: "center",
-                                            justifyContent: "center",
-                                        }}
-                                    >
-                                        <Typography color="text.secondary">No Image</Typography>
+                                    <Box sx={{ height: 360, display: "grid", placeItems: "center" }}>
+                                        <Typography color="text.secondary">No image available</Typography>
                                     </Box>
                                 )}
-                            </Box>
-
-                            {/* Card Details */}
-                            <Box sx={{ flex: 1, minWidth: 280 }}>
-                                <Box sx={{ display: "flex", gap: 1, mb: 2, flexWrap: "wrap" }}>
-                                    <Chip label={product.categoryName} size="small" color="primary" />
-                                    <Chip label={product.groupName} size="small" variant="outlined" />
-                                    {product.rarity && (
-                                        <Chip label={product.rarity} size="small" variant="outlined" />
-                                    )}
+                                <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", mt: 2 }}>
+                                    <Chip label={product.categoryName} color="primary" size="small" />
+                                    <Chip label={product.groupName} size="small" />
+                                    {product.rarity && <Chip label={product.rarity} size="small" variant="outlined" />}
                                     {product.cardNumber && (
-                                        <Chip
-                                            label={`#${product.cardNumber}`}
-                                            size="small"
-                                            variant="outlined"
-                                        />
+                                        <Chip label={`#${product.cardNumber}`} size="small" variant="outlined" />
                                     )}
                                 </Box>
-
                                 {product.url && (
-                                    <Link
+                                    <Button
                                         href={product.url}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        sx={{ display: "inline-flex", alignItems: "center", gap: 0.5, mb: 2 }}
+                                        endIcon={<OpenInNewIcon />}
+                                        variant="outlined"
+                                        fullWidth
+                                        sx={{ mt: 2 }}
                                     >
-                                        View on TCGPlayer <OpenInNewIcon fontSize="small" />
-                                    </Link>
+                                        View on TCGPlayer
+                                    </Button>
                                 )}
+                            </Paper>
 
-                                {/* Watchlist Controls */}
-                                {watchlists && watchlists.length > 0 && (
-                                    <Box sx={{ display: "flex", alignItems: "center", gap: 1, mb: 2, mt: 1 }}>
-                                        <FormControl size="small" sx={{ minWidth: 160 }}>
+                            <Paper sx={{ p: 2.5, border: "1px solid", borderColor: "divider" }}>
+                                <Typography variant="subtitle1" sx={{ mb: 1.5 }}>
+                                    Watchlists
+                                </Typography>
+                                {watchlists && watchlists.length > 0 ? (
+                                    <>
+                                        <FormControl fullWidth size="small" sx={{ mb: 1.5 }}>
                                             <InputLabel>Watchlist</InputLabel>
                                             <Select
                                                 value={selectedWatchlistId ?? ""}
                                                 label="Watchlist"
-                                                onChange={(e) =>
+                                                onChange={(event) =>
                                                     setSelectedWatchlistId(
-                                                        e.target.value ? Number(e.target.value) : null
+                                                        event.target.value ? Number(event.target.value) : null
                                                     )
                                                 }
                                             >
-                                                {watchlists.map((w) => (
-                                                    <MenuItem key={w.id} value={w.id}>
-                                                        {w.name}
+                                                {watchlists.map((watchlist) => (
+                                                    <MenuItem key={watchlist.id} value={watchlist.id}>
+                                                        {watchlist.name}
                                                     </MenuItem>
                                                 ))}
                                             </Select>
                                         </FormControl>
-                                        {selectedWatchlistId && (
-                                            <Button
-                                                variant={isInWatchlist ? "outlined" : "contained"}
-                                                size="small"
-                                                startIcon={
-                                                    isInWatchlist ? (
-                                                        <StarIcon />
-                                                    ) : (
-                                                        <StarBorderIcon />
-                                                    )
-                                                }
-                                                onClick={handleToggleWatchlist}
-                                                color={isInWatchlist ? "warning" : "primary"}
-                                            >
-                                                {isInWatchlist ? "Remove" : "Add"}
-                                            </Button>
-                                        )}
-                                    </Box>
+                                        <Button
+                                            fullWidth
+                                            variant={isInWatchlist ? "outlined" : "contained"}
+                                            startIcon={isInWatchlist ? <StarIcon /> : <StarBorderIcon />}
+                                            disabled={!selectedWatchlistId}
+                                            onClick={handleToggleWatchlist}
+                                        >
+                                            {isInWatchlist ? "Remove from watchlist" : "Add to watchlist"}
+                                        </Button>
+                                    </>
+                                ) : (
+                                    <Typography variant="body2" color="text.secondary">
+                                        Create a watchlist to pin cards directly from the workbench.
+                                    </Typography>
                                 )}
+                            </Paper>
 
-                                <Typography variant="subtitle2" fontWeight={700} sx={{ mt: 2, mb: 1 }}>
-                                    Price Variants
+                            <Paper sx={{ p: 2.5, border: "1px solid", borderColor: "divider" }}>
+                                <Typography variant="subtitle1" sx={{ mb: 1.5 }}>
+                                    Live Snapshot
                                 </Typography>
-
-                                <Table size="small">
-                                    <TableHead>
-                                        <TableRow>
-                                            <TableCell>Variant</TableCell>
-                                            <TableCell align="right">Market</TableCell>
-                                            <TableCell align="right">Mid</TableCell>
-                                            <TableCell align="right">Low</TableCell>
-                                            <TableCell align="right">% Below Mid</TableCell>
-                                        </TableRow>
-                                    </TableHead>
-                                    <TableBody>
-                                        {product.prices.map((p) => (
-                                            <TableRow key={p.subTypeName}>
-                                                <TableCell>{p.subTypeName}</TableCell>
-                                                <TableCell align="right" sx={{ fontWeight: 700 }}>
-                                                    {formatPrice(p.marketPrice)}
-                                                </TableCell>
-                                                <TableCell align="right">
-                                                    {formatPrice(p.midPrice)}
-                                                </TableCell>
-                                                <TableCell align="right">
-                                                    {formatPrice(p.lowPrice)}
-                                                </TableCell>
-                                                <TableCell
-                                                    align="right"
-                                                    sx={{
-                                                        color: getPctColor(p.pctBelowMid),
-                                                        fontWeight: 700,
-                                                    }}
-                                                >
-                                                    {p.pctBelowMid !== null ? `${p.pctBelowMid}%` : "N/A"}
-                                                </TableCell>
-                                            </TableRow>
-                                        ))}
-                                    </TableBody>
-                                </Table>
-
-                                {/* Price Comparisons */}
-                                {comparisons && (
-                                    <Box sx={{ mt: 3 }}>
-                                        <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>
-                                            Price Comparisons
-                                        </Typography>
-                                        <Box sx={{ display: "flex", gap: 1.5, flexWrap: "wrap" }}>
-                                            {comparisons.thirtyDaysAgo && (
-                                                <ComparisonChip
-                                                    label="vs 30d ago"
-                                                    pct={comparisons.thirtyDaysAgo.pctChange}
-                                                    oldPrice={comparisons.thirtyDaysAgo.price}
-                                                />
-                                            )}
-                                            {comparisons.ninetyDaysAgo && (
-                                                <ComparisonChip
-                                                    label="vs 90d ago"
-                                                    pct={comparisons.ninetyDaysAgo.pctChange}
-                                                    oldPrice={comparisons.ninetyDaysAgo.price}
-                                                />
-                                            )}
-                                            {comparisons.oneYearAgo && (
-                                                <ComparisonChip
-                                                    label="vs 1yr ago"
-                                                    pct={comparisons.oneYearAgo.pctChange}
-                                                    oldPrice={comparisons.oneYearAgo.price}
-                                                />
-                                            )}
-                                            {comparisons.allTimeLow && (
-                                                <Chip
-                                                    label={`ATL: ${formatPrice(comparisons.allTimeLow.price)}${comparisons.allTimeLow.date ? ` (${comparisons.allTimeLow.date})` : ""}`}
-                                                    size="small"
-                                                    variant="outlined"
-                                                    sx={{ fontSize: "0.75rem" }}
-                                                />
-                                            )}
-                                            {comparisons.allTimeHigh && (
-                                                <Chip
-                                                    label={`ATH: ${formatPrice(comparisons.allTimeHigh.price)}${comparisons.allTimeHigh.date ? ` (${comparisons.allTimeHigh.date})` : ""}`}
-                                                    size="small"
-                                                    variant="outlined"
-                                                    sx={{ fontSize: "0.75rem" }}
-                                                />
-                                            )}
+                                <Box sx={{ display: "grid", gap: 1.25 }}>
+                                    {product.prices.map((variant) => (
+                                        <Box key={variant.subTypeName} sx={{ display: "flex", justifyContent: "space-between", gap: 1.5 }}>
+                                            <Typography variant="body2" color="text.secondary">
+                                                {variant.subTypeName}
+                                            </Typography>
+                                            <Typography variant="body2" fontWeight={700}>
+                                                {formatPrice(variant.marketPrice)}
+                                            </Typography>
                                         </Box>
-                                    </Box>
-                                )}
+                                    ))}
+                                </Box>
+                            </Paper>
+                        </Stack>
 
-                                {technicals && (
-                                    <Box sx={{ mt: 3 }}>
-                                        <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>
-                                            Market-Price Technicals
-                                        </Typography>
-                                        <Box
-                                            sx={{
-                                                display: "grid",
-                                                gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
-                                                gap: 1,
+                        <Stack spacing={2.5} sx={{ minWidth: 0 }}>
+                            <Paper sx={{ p: 2.5, border: "1px solid", borderColor: "divider" }}>
+                                <Box sx={{ display: "flex", justifyContent: "space-between", gap: 2, flexWrap: "wrap", mb: 2 }}>
+                                    <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+                                        {[90, 180, 365, 730].map((days) => (
+                                            <Button
+                                                key={days}
+                                                size="small"
+                                                variant={chartDays === days ? "contained" : "outlined"}
+                                                onClick={() => setChartDays(days)}
+                                            >
+                                                {days === 730 ? "2Y" : `${Math.round(days / 30)}M`}
+                                            </Button>
+                                        ))}
+                                    </Box>
+
+                                    <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+                                        <FormControl size="small" sx={{ minWidth: 150 }}>
+                                            <InputLabel>Variant</InputLabel>
+                                            <Select
+                                                value={selectedSubType ?? ""}
+                                                label="Variant"
+                                                onChange={(event) => setSelectedSubType(String(event.target.value))}
+                                            >
+                                                {product.prices.map((variant) => (
+                                                    <MenuItem key={variant.subTypeName} value={variant.subTypeName}>
+                                                        {variant.subTypeName}
+                                                    </MenuItem>
+                                                ))}
+                                            </Select>
+                                        </FormControl>
+                                        <Button
+                                            variant={measureMode ? "contained" : "outlined"}
+                                            startIcon={<StraightenIcon />}
+                                            onClick={() => {
+                                                setMeasureMode((current) => !current);
+                                                setMeasurePoints([]);
                                             }}
                                         >
-                                            <Chip
-                                                label={`SMA20 ${formatPrice(technicals.sma20)}`}
-                                                size="small"
-                                                variant="outlined"
-                                            />
-                                            <Chip
-                                                label={`SMA50 ${formatPrice(technicals.sma50)}`}
-                                                size="small"
-                                                variant="outlined"
-                                            />
-                                            <Chip
-                                                label={`SMA200 ${formatPrice(technicals.sma200)}`}
-                                                size="small"
-                                                variant="outlined"
-                                            />
-                                            <Chip
-                                                label={`vs SMA20 ${formatSignedPercent(technicals.priceVsSma20Pct)}`}
-                                                size="small"
-                                                variant="outlined"
-                                            />
-                                            <Chip
-                                                label={`SMA Trend ${technicals.smaTrend ?? "neutral"}`}
-                                                size="small"
-                                                variant="outlined"
-                                            />
-                                            <Chip
-                                                label={`MACD ${technicals.macdTrend ?? "neutral"}`}
-                                                size="small"
-                                                variant="outlined"
-                                            />
-                                        </Box>
-                                    </Box>
-                                )}
-                            </Box>
-                        </Box>
-
-                        {/* Price History Chart */}
-                        {historyData && historyData.history.length > 0 && (
-                            <Box sx={{ mt: 3 }}>
-                                <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}>
-                                    <Typography variant="subtitle2" fontWeight={700}>
-                                        Price History
-                                    </Typography>
-                                    <ToggleButtonGroup
-                                        value={chartDays}
-                                        exclusive
-                                        onChange={(_, val) => val !== null && setChartDays(val)}
-                                        size="small"
-                                    >
-                                        <ToggleButton value={30}>30d</ToggleButton>
-                                        <ToggleButton value={90}>90d</ToggleButton>
-                                        <ToggleButton value={365}>1yr</ToggleButton>
-                                        <ToggleButton value={3000}>All</ToggleButton>
-                                    </ToggleButtonGroup>
-                                </Box>
-                                <ResponsiveContainer width="100%" height={250}>
-                                    <LineChart data={historyData.history} syncId="price-signals">
-                                        <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
-                                        <XAxis
-                                            dataKey="date"
-                                            tick={{ fontSize: 11 }}
-                                            tickFormatter={(d: string) => {
-                                                const dt = new Date(d);
-                                                return `${dt.getMonth() + 1}/${dt.getDate()}`;
+                                            Measure
+                                        </Button>
+                                        <Button
+                                            variant="outlined"
+                                            startIcon={<EditNoteIcon />}
+                                            onClick={() => {
+                                                setUserShapes([]);
+                                                setMeasurePoints([]);
                                             }}
-                                            minTickGap={30}
-                                        />
-                                        <YAxis
-                                            tick={{ fontSize: 11 }}
-                                            tickFormatter={(v: number) => `$${v}`}
-                                            width={55}
-                                        />
-                                        <Tooltip
-                                            formatter={(value) => [`$${Number(value)?.toFixed(2) ?? "N/A"}`]}
-                                            labelFormatter={(label) => new Date(String(label)).toLocaleDateString()}
-                                        />
-                                        <Line
-                                            type="monotone"
-                                            dataKey="marketPrice"
-                                            stroke="#1976d2"
-                                            strokeWidth={2}
-                                            dot={false}
-                                            name="Market"
-                                            connectNulls
-                                        />
-                                        <Line
-                                            type="monotone"
-                                            dataKey="sma20"
-                                            stroke="#ff9800"
-                                            strokeWidth={2}
-                                            dot={false}
-                                            name="SMA20"
-                                            connectNulls
-                                        />
-                                        <Line
-                                            type="monotone"
-                                            dataKey="sma50"
-                                            stroke="#7b1fa2"
-                                            strokeWidth={2}
-                                            dot={false}
-                                            name="SMA50"
-                                            connectNulls
-                                        />
-                                        <Line
-                                            type="monotone"
-                                            dataKey="sma200"
-                                            stroke="#455a64"
-                                            strokeWidth={2}
-                                            dot={false}
-                                            name="SMA200"
-                                            connectNulls
-                                        />
-                                    </LineChart>
-                                </ResponsiveContainer>
-
-                                <Box sx={{ mt: 2 }}>
-                                    <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1 }}>
-                                        MACD
-                                    </Typography>
-                                    <ResponsiveContainer width="100%" height={160}>
-                                        <ComposedChart data={historyData.history} syncId="price-signals">
-                                            <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
-                                            <XAxis
-                                                dataKey="date"
-                                                tick={{ fontSize: 11 }}
-                                                tickFormatter={(d: string) => {
-                                                    const dt = new Date(d);
-                                                    return `${dt.getMonth() + 1}/${dt.getDate()}`;
-                                                }}
-                                                minTickGap={30}
-                                            />
-                                            <YAxis tick={{ fontSize: 11 }} width={55} />
-                                            <Tooltip
-                                                formatter={(value) => [Number(value).toFixed(3)]}
-                                                labelFormatter={(label) =>
-                                                    new Date(String(label)).toLocaleDateString()
-                                                }
-                                            />
-                                            <ReferenceLine y={0} stroke="#999" strokeDasharray="4 4" />
-                                            <Bar
-                                                dataKey="macdHistogram"
-                                                fill="#90caf9"
-                                                name="Histogram"
-                                            />
-                                            <Line
-                                                type="monotone"
-                                                dataKey="macd"
-                                                stroke="#1565c0"
-                                                strokeWidth={2}
-                                                dot={false}
-                                                name="MACD"
-                                                connectNulls
-                                            />
-                                            <Line
-                                                type="monotone"
-                                                dataKey="macdSignal"
-                                                stroke="#ef6c00"
-                                                strokeWidth={2}
-                                                dot={false}
-                                                name="Signal"
-                                                connectNulls
-                                            />
-                                        </ComposedChart>
-                                    </ResponsiveContainer>
+                                        >
+                                            Clear overlays
+                                        </Button>
+                                    </Box>
                                 </Box>
+
+                                <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", mb: 2 }}>
+                                    {[
+                                        ["marketPrice", "Market"],
+                                        ["lowPrice", "Low"],
+                                        ["sma20", "SMA20"],
+                                        ["sma50", "SMA50"],
+                                        ["sma200", "SMA200"],
+                                        ["macd", "MACD"],
+                                        ["macdSignal", "Signal"],
+                                        ["macdHistogram", "Histogram"],
+                                    ].map(([key, label]) => (
+                                        <Chip
+                                            key={key}
+                                            label={label}
+                                            color={seriesVisibility[key as keyof SeriesVisibility] ? "primary" : "default"}
+                                            variant={seriesVisibility[key as keyof SeriesVisibility] ? "filled" : "outlined"}
+                                            onClick={() =>
+                                                setSeriesVisibility((current) => ({
+                                                    ...current,
+                                                    [key]: !current[key as keyof SeriesVisibility],
+                                                }))
+                                            }
+                                        />
+                                    ))}
+                                </Box>
+
+                                <Box sx={{ height: fullScreen ? 780 : 540 }}>
+                                    <Plot
+                                        data={plotData as never}
+                                        layout={plotLayout as never}
+                                        config={plotConfig as never}
+                                        style={{ width: "100%", height: "100%" }}
+                                        useResizeHandler
+                                        onClick={(event: any) => {
+                                            if (!measureMode) return;
+                                            const point = event.points?.[0];
+                                            if (!point || typeof point.x !== "string" || typeof point.y !== "number") {
+                                                return;
+                                            }
+                                            setMeasurePoints((current) =>
+                                                current.length >= 2
+                                                    ? [{ x: point.x, y: point.y }]
+                                                    : [...current, { x: point.x, y: point.y }]
+                                            );
+                                        }}
+                                        onRelayout={(event: any) => {
+                                            const relayoutEvent = event as Record<string, unknown>;
+                                            if (Array.isArray(relayoutEvent.shapes)) {
+                                                setUserShapes(relayoutEvent.shapes as Layout["shapes"]);
+                                            }
+                                        }}
+                                    />
+                                </Box>
+                            </Paper>
+
+                            <Box
+                                sx={{
+                                    display: "grid",
+                                    gap: 2,
+                                    gridTemplateColumns: {
+                                        xs: "1fr",
+                                        md: "repeat(4, minmax(0, 1fr))",
+                                    },
+                                }}
+                            >
+                                <MetricPill label="Market" value={formatPrice(technicals?.marketPrice)} />
+                                <MetricPill label="SMA20 vs price" value={formatSignedPercent(technicals?.priceVsSma20Pct)} />
+                                <MetricPill label="SMA trend" value={technicals?.smaTrend ?? "N/A"} />
+                                <MetricPill label="MACD trend" value={technicals?.macdTrend ?? "N/A"} />
                             </Box>
-                        )}
-                    </>
-                ) : (
-                    <Typography>Product not found.</Typography>
-                )}
+
+                            <Paper sx={{ p: 2.5, border: "1px solid", borderColor: "divider" }}>
+                                <Typography variant="subtitle1" sx={{ mb: 1.5 }}>
+                                    Measurement + Comparison Tape
+                                </Typography>
+                                <Box
+                                    sx={{
+                                        display: "grid",
+                                        gap: 2,
+                                        gridTemplateColumns: { xs: "1fr", md: "repeat(3, minmax(0, 1fr))" },
+                                    }}
+                                >
+                                    <MetricPill
+                                        label="Measured move"
+                                        value={measurement ? measurement.label : "Select two chart points"}
+                                    />
+                                    <MetricPill
+                                        label="30D"
+                                        value={formatSignedPercent(comparisons?.thirtyDaysAgo?.pctChange)}
+                                    />
+                                    <MetricPill
+                                        label="90D"
+                                        value={formatSignedPercent(comparisons?.ninetyDaysAgo?.pctChange)}
+                                    />
+                                    <MetricPill
+                                        label="1Y"
+                                        value={formatSignedPercent(comparisons?.oneYearAgo?.pctChange)}
+                                    />
+                                    <MetricPill
+                                        label="ATL"
+                                        value={formatPrice(comparisons?.allTimeLow?.price)}
+                                    />
+                                    <MetricPill
+                                        label="ATH"
+                                        value={formatPrice(comparisons?.allTimeHigh?.price)}
+                                    />
+                                </Box>
+                            </Paper>
+                        </Stack>
+                    </Box>
+                ) : null}
             </DialogContent>
         </Dialog>
     );

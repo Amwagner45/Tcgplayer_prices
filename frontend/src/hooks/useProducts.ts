@@ -6,6 +6,10 @@ import {
     fetchProduct,
     fetchPriceHistory,
     fetchPriceComparisons,
+    fetchMonthlyAnalytics,
+    fetchSetAnalytics,
+    fetchSetHistory,
+    fetchLeaderboard,
     fetchWatchlists,
     createWatchlist,
     deleteWatchlist,
@@ -56,11 +60,68 @@ export function usePriceHistory(productId: number | null, days: number = 365) {
     });
 }
 
-export function usePriceComparisons(productId: number | null) {
+export function usePriceHistoryByVariant(
+    productId: number | null,
+    days: number = 365,
+    subType?: string
+) {
     return useQuery({
-        queryKey: ["priceComparisons", productId],
-        queryFn: () => fetchPriceComparisons(productId!),
+        queryKey: ["priceHistory", productId, days, subType],
+        queryFn: () => fetchPriceHistory(productId!, days, subType),
         enabled: productId !== null,
+    });
+}
+
+export function usePriceComparisons(productId: number | null, subType?: string) {
+    return useQuery({
+        queryKey: ["priceComparisons", productId, subType],
+        queryFn: () => fetchPriceComparisons(productId!, subType),
+        enabled: productId !== null,
+    });
+}
+
+export function useMonthlyAnalytics(
+    minPrice: number,
+    months: number,
+    limit: number,
+    categoryId?: number
+) {
+    return useQuery({
+        queryKey: ["monthlyAnalytics", minPrice, months, limit, categoryId],
+        queryFn: () => fetchMonthlyAnalytics(minPrice, months, limit, categoryId),
+    });
+}
+
+export function useSetAnalytics(
+    minPrice: number,
+    months: number,
+    limit: number,
+    categoryId?: number
+) {
+    return useQuery({
+        queryKey: ["setAnalytics", minPrice, months, limit, categoryId],
+        queryFn: () => fetchSetAnalytics(minPrice, months, limit, categoryId),
+    });
+}
+
+export function useSetHistory(groupId: number | null, minPrice: number, months: number) {
+    return useQuery({
+        queryKey: ["setHistory", groupId, minPrice, months],
+        queryFn: () => fetchSetHistory(groupId!, minPrice, months),
+        enabled: groupId !== null,
+    });
+}
+
+export function useLeaderboard(
+    minPrice: number,
+    months: number,
+    limit: number,
+    metric: string,
+    categoryId?: number
+) {
+    return useQuery({
+        queryKey: ["leaderboard", minPrice, months, limit, metric, categoryId],
+        queryFn: () => fetchLeaderboard(minPrice, months, limit, metric, categoryId),
     });
 }
 

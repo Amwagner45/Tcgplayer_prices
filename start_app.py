@@ -20,19 +20,34 @@ def format_cmd(cmd: list[str]) -> str:
     return " ".join(cmd)
 
 
-def has_uvicorn(py_cmd: list[str]) -> bool:
+def get_missing_backend_modules(py_cmd: list[str]) -> list[str] | None:
+    required_modules = ["uvicorn", "fastapi", "sqlalchemy", "duckdb", "duckdb_engine"]
+    probe = (
+        "import importlib.util\n"
+        f"mods = {required_modules!r}\n"
+        "missing = [name for name in mods if importlib.util.find_spec(name) is None]\n"
+        "print('|'.join(missing))\n"
+    )
+
     try:
         result = subprocess.run(
-            [*py_cmd, "-c", "import uvicorn"],
+            [*py_cmd, "-c", probe],
             cwd=ROOT_DIR / "backend",
-            stdout=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
             stderr=subprocess.DEVNULL,
+            text=True,
             check=False,
         )
     except OSError:
-        return False
+        return None
 
-    return result.returncode == 0
+    if result.returncode != 0:
+        return None
+
+    missing = result.stdout.strip()
+    if not missing:
+        return []
+    return missing.split("|")
 
 
 def resolve_backend_python() -> list[str]:
@@ -59,13 +74,25 @@ def resolve_backend_python() -> list[str]:
             seen.add(key)
             unique_candidates.append(cmd)
 
+    missing_by_candidate: list[tuple[list[str], list[str] | None]] = []
     for cmd in unique_candidates:
-        if has_uvicorn(cmd):
+        missing_modules = get_missing_backend_modules(cmd)
+        missing_by_candidate.append((cmd, missing_modules))
+        if missing_modules == []:
             return cmd
 
-    attempted = "\n".join(f"  - {format_cmd(cmd)}" for cmd in unique_candidates)
+    attempted_lines = []
+    for cmd, missing_modules in missing_by_candidate:
+        if missing_modules is None:
+            suffix = "interpreter probe failed"
+        elif missing_modules:
+            suffix = f"missing: {', '.join(missing_modules)}"
+        else:
+            suffix = "ready"
+        attempted_lines.append(f"  - {format_cmd(cmd)} ({suffix})")
+    attempted = "\n".join(attempted_lines)
     raise RuntimeError(
-        "Could not find a Python interpreter with uvicorn installed.\n"
+        "Could not find a Python interpreter with the required backend dependencies installed.\n"
         "Set BACKEND_PYTHON to the correct Python executable or install backend deps first.\n"
         "Attempted:\n"
         f"{attempted}"
