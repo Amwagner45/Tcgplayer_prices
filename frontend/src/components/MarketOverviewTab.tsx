@@ -1,5 +1,4 @@
 import { Box, Chip, Paper, Typography } from "@mui/material";
-import FilterPanel from "./FilterPanel";
 import StatsBar from "./StatsBar";
 import CardTable from "./CardTable";
 import OpportunitiesPanel from "./OpportunitiesPanel";
@@ -25,7 +24,6 @@ export default function MarketOverviewTab({ filters, onChange, onSelectCard }: P
                 }}
             >
                 <Box sx={{ display: "grid", gap: 3 }}>
-                    <FilterPanel filters={filters} onChange={onChange} />
                     <Paper
                         sx={{
                             p: 2.5,
@@ -45,7 +43,7 @@ export default function MarketOverviewTab({ filters, onChange, onSelectCard }: P
                 </Box>
 
                 <Box sx={{ display: "grid", gap: 3, minWidth: 0 }}>
-                    <OpportunitiesPanel onSelectCard={onSelectCard} />
+                    <OpportunitiesPanel filters={filters} onSelectCard={onSelectCard} />
                     <CardTable
                         filters={filters}
                         onChange={onChange}

@@ -3,8 +3,6 @@ import {
     Box,
     Paper,
     Typography,
-    TextField,
-    InputAdornment,
     Chip,
     Avatar,
     Skeleton,
@@ -13,16 +11,15 @@ import {
     InputLabel,
     Select,
     MenuItem,
-    Autocomplete,
 } from "@mui/material";
 import TrendingDownIcon from "@mui/icons-material/TrendingDown";
 import TrendingUpIcon from "@mui/icons-material/TrendingUp";
 import WhatshotIcon from "@mui/icons-material/Whatshot";
-import SearchIcon from "@mui/icons-material/Search";
-import { useProducts, useFilters } from "../hooks/useProducts";
+import { useProducts } from "../hooks/useProducts";
 import type { ProductFilters, ProductItem } from "../types";
 
 interface Props {
+    filters: ProductFilters;
     onSelectCard: (productId: number) => void;
 }
 
@@ -408,33 +405,28 @@ function OpportunityCard({
     );
 }
 
-export default function OpportunitiesPanel({ onSelectCard }: Props) {
-    const [minPrice, setMinPrice] = useState("50");
-    const [maxPrice, setMaxPrice] = useState("");
-    const [maxRange, setMaxRange] = useState(0.3);
-    const [categoryId, setCategoryId] = useState<number | undefined>(undefined);
-    const [groupIds, setGroupIds] = useState<number[]>([]);
-    const [rarities, setRarities] = useState<string[]>([]);
-    const [subTypes, setSubTypes] = useState<string[]>([]);
-    const [searchInput, setSearchInput] = useState("");
-    const [search, setSearch] = useState<string | undefined>(undefined);
+export default function OpportunitiesPanel({ filters, onSelectCard }: Props) {
     const [sortBy, setSortBy] = useState("opportunity_score");
     const [page, setPage] = useState(1);
-    const { data: filterOptions } = useFilters(categoryId);
 
-    // Debounce search
     useEffect(() => {
-        const timer = setTimeout(() => {
-            setSearch(searchInput || undefined);
-            setPage(1);
-        }, 400);
-        return () => clearTimeout(timer);
-    }, [searchInput]);
+        setPage(1);
+    }, [
+        filters.categoryId,
+        filters.groupIds,
+        filters.releaseYearStart,
+        filters.releaseYearEnd,
+        filters.rarities,
+        filters.subTypes,
+        filters.minPrice,
+        filters.maxPrice,
+        filters.search,
+        filters.watchlistId,
+        filters.maxRangePosition,
+    ]);
 
-    const minVal = parseFloat(minPrice);
-    const maxVal = parseFloat(maxPrice);
-
-    const filters: ProductFilters = {
+    const opportunityFilters: ProductFilters = {
+        ...filters,
         sortBy,
         sortDir:
             sortBy === "market_price" || sortBy === "range_position"
@@ -442,34 +434,15 @@ export default function OpportunitiesPanel({ onSelectCard }: Props) {
                 : "desc",
         page,
         pageSize: 24,
-        minPrice: !isNaN(minVal) && minVal > 0 ? minVal : undefined,
-        maxPrice: !isNaN(maxVal) && maxVal > 0 ? maxVal : undefined,
-        categoryId,
-        groupIds: groupIds.length > 0 ? groupIds : undefined,
-        rarities: rarities.length > 0 ? rarities : undefined,
-        subTypes: subTypes.length > 0 ? subTypes : undefined,
-        search,
-        maxRangePosition: maxRange,
+        maxRangePosition: filters.maxRangePosition ?? 0.3,
     };
 
-    const { data, isLoading } = useProducts(filters);
+    const { data, isLoading } = useProducts(opportunityFilters);
 
     const items = data?.items ?? [];
 
-    // Build Autocomplete options
-    const groupOptions =
-        filterOptions?.groups.map((g) => ({ id: g.groupId, label: g.name })) ??
-        [];
-    const rarityOptions = filterOptions?.rarities ?? [];
-    const subTypeOptions = filterOptions?.subTypes ?? [];
-
-    const selectedGroups = groupOptions.filter((g) => groupIds.includes(g.id));
-    const selectedRarities = rarityOptions.filter((r) => rarities.includes(r));
-    const selectedSubTypes = subTypeOptions.filter((s) => subTypes.includes(s));
-
     return (
         <Box>
-            {/* Header */}
             <Paper
                 elevation={0}
                 sx={{
@@ -496,8 +469,7 @@ export default function OpportunitiesPanel({ onSelectCard }: Props) {
                             Market-Price Opportunity Signals
                         </Typography>
                         <Typography variant="body2" sx={{ opacity: 0.6 }}>
-                            $50+ cards near their historical lows, ranked with
-                            market-price SMA and MACD momentum signals
+                            Global dashboard filters are applied here too. This view ranks cards near their historical lows with momentum context.
                         </Typography>
                     </Box>
                     {data && (
@@ -513,78 +485,23 @@ export default function OpportunitiesPanel({ onSelectCard }: Props) {
                         />
                     )}
                 </Box>
-            </Paper>
-
-            {/* Filters */}
-            <Paper
-                elevation={0}
-                sx={{
-                    p: 2.5,
-                    mb: 3,
-                    borderRadius: 3,
-                    border: "1px solid",
-                    borderColor: "divider",
-                }}
-            >
-                {/* Top row: search + game + sort */}
                 <Box
                     sx={{
                         display: "flex",
                         gap: 2,
                         flexWrap: "wrap",
                         alignItems: "center",
-                        mb: 2,
+                        mt: 2,
                     }}
                 >
-                    <TextField
-                        size="small"
-                        placeholder="Search cards..."
-                        value={searchInput}
-                        onChange={(e) => setSearchInput(e.target.value)}
-                        slotProps={{
-                            input: {
-                                startAdornment: (
-                                    <SearchIcon
-                                        sx={{ mr: 1, color: "text.secondary" }}
-                                    />
-                                ),
-                            },
-                        }}
-                        sx={{ minWidth: 200, flex: 1 }}
-                    />
-                    <FormControl size="small" sx={{ minWidth: 140 }}>
-                        <InputLabel>Game</InputLabel>
-                        <Select
-                            value={categoryId ?? ""}
-                            label="Game"
-                            onChange={(e) => {
-                                setCategoryId(
-                                    e.target.value
-                                        ? Number(e.target.value)
-                                        : undefined
-                                );
-                                setGroupIds([]);
-                                setRarities([]);
-                                setSubTypes([]);
-                                setPage(1);
-                            }}
-                        >
-                            <MenuItem value="">All Games</MenuItem>
-                            {filterOptions?.categories.map((c) => (
-                                <MenuItem
-                                    key={c.categoryId}
-                                    value={c.categoryId}
-                                >
-                                    {c.displayName}
-                                </MenuItem>
-                            ))}
-                        </Select>
-                    </FormControl>
+                    <Chip label={filters.groupIds?.length ? `${filters.groupIds.length} set filters` : "All sets"} variant="outlined" />
+                    <Chip label={filters.rarities?.length ? `${filters.rarities.length} rarity filters` : "All rarities"} variant="outlined" />
+                    <Chip label={filters.subTypes?.length ? `${filters.subTypes.length} variant filters` : "All variants"} variant="outlined" />
                     <FormControl size="small" sx={{ minWidth: 180 }}>
-                        <InputLabel>Sort By</InputLabel>
+                        <InputLabel>Opportunity Rank</InputLabel>
                         <Select
                             value={sortBy}
-                            label="Sort By"
+                            label="Opportunity Rank"
                             onChange={(e) => {
                                 setSortBy(e.target.value);
                                 setPage(1);
@@ -602,128 +519,6 @@ export default function OpportunitiesPanel({ onSelectCard }: Props) {
                             <MenuItem value="market_price">
                                 Price (Low to High)
                             </MenuItem>
-                            <MenuItem value="pct_change_30d">
-                                Biggest 30d Drop
-                            </MenuItem>
-                        </Select>
-                    </FormControl>
-                </Box>
-
-                {/* Second row: sets, rarities, variants */}
-                <Box
-                    sx={{
-                        display: "flex",
-                        gap: 2,
-                        flexWrap: "wrap",
-                        alignItems: "center",
-                        mb: 2,
-                    }}
-                >
-                    <Autocomplete
-                        multiple
-                        size="small"
-                        options={groupOptions}
-                        getOptionLabel={(o) => o.label}
-                        isOptionEqualToValue={(a, b) => a.id === b.id}
-                        value={selectedGroups}
-                        onChange={(_, newVal) => {
-                            setGroupIds(newVal.map((g) => g.id));
-                            setPage(1);
-                        }}
-                        renderInput={(params) => (
-                            <TextField {...params} label="Sets" />
-                        )}
-                        sx={{ minWidth: 200, flex: 1 }}
-                    />
-                    <Autocomplete
-                        multiple
-                        size="small"
-                        options={rarityOptions}
-                        value={selectedRarities}
-                        onChange={(_, newVal) => {
-                            setRarities(newVal);
-                            setPage(1);
-                        }}
-                        renderInput={(params) => (
-                            <TextField {...params} label="Rarities" />
-                        )}
-                        sx={{ minWidth: 180, flex: 1 }}
-                    />
-                    <Autocomplete
-                        multiple
-                        size="small"
-                        options={subTypeOptions}
-                        value={selectedSubTypes}
-                        onChange={(_, newVal) => {
-                            setSubTypes(newVal);
-                            setPage(1);
-                        }}
-                        renderInput={(params) => (
-                            <TextField {...params} label="Variants" />
-                        )}
-                        sx={{ minWidth: 160, flex: 1 }}
-                    />
-                </Box>
-
-                {/* Third row: price range + max range */}
-                <Box
-                    sx={{
-                        display: "flex",
-                        gap: 2,
-                        flexWrap: "wrap",
-                        alignItems: "center",
-                    }}
-                >
-                    <TextField
-                        size="small"
-                        label="Min Price"
-                        value={minPrice}
-                        onChange={(e) => {
-                            setMinPrice(e.target.value);
-                            setPage(1);
-                        }}
-                        slotProps={{
-                            input: {
-                                startAdornment: (
-                                    <InputAdornment position="start">
-                                        $
-                                    </InputAdornment>
-                                ),
-                            },
-                        }}
-                        sx={{ width: 110 }}
-                        type="number"
-                    />
-                    <TextField
-                        size="small"
-                        label="Max Price"
-                        value={maxPrice}
-                        onChange={(e) => {
-                            setMaxPrice(e.target.value);
-                            setPage(1);
-                        }}
-                        slotProps={{
-                            input: {
-                                startAdornment: (
-                                    <InputAdornment position="start">
-                                        $
-                                    </InputAdornment>
-                                ),
-                            },
-                        }}
-                        sx={{ width: 110 }}
-                        type="number"
-                    />
-                    <FormControl size="small" sx={{ minWidth: 160 }}>
-                        <InputLabel>Max Range %</InputLabel>
-                        <Select
-                            value={maxRange}
-                            label="Max Range %"
-                            onChange={(e) => {
-                                setMaxRange(Number(e.target.value));
-                                setPage(1);
-                            }}
-                        >
                             <MenuItem value={0.1}>Near ATL (&le;10%)</MenuItem>
                             <MenuItem value={0.2}>Close (&le;20%)</MenuItem>
                             <MenuItem value={0.3}>Moderate (&le;30%)</MenuItem>

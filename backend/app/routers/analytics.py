@@ -21,6 +21,54 @@ router = APIRouter(prefix="/api")
 DEFAULT_ANALYTICS_MIN_PRICE = 50.0
 
 
+def parse_group_ids(group_id: str | None) -> list[int] | None:
+    if not group_id:
+        return None
+    values = [int(value) for value in group_id.split(",") if value.strip()]
+    return values or None
+
+
+def parse_csv_values(raw_value: str | None) -> list[str] | None:
+    if not raw_value:
+        return None
+    values = [value.strip() for value in raw_value.split(",") if value.strip()]
+    return values or None
+
+
+def parse_release_year(published_on: str | None) -> int | None:
+    if not published_on:
+        return None
+    year_text = published_on[:4]
+    return int(year_text) if year_text.isdigit() else None
+
+
+def matches_release_filters(
+    published_on: str | None,
+    release_year_start: int | None,
+    release_year_end: int | None,
+) -> bool:
+    if release_year_start is None and release_year_end is None:
+        return True
+    release_year = parse_release_year(published_on)
+    if release_year is None:
+        return False
+    if release_year_start is not None and release_year < release_year_start:
+        return False
+    if release_year_end is not None and release_year > release_year_end:
+        return False
+    return True
+
+
+def matches_group_filter(group_id: int, group_ids: list[int] | None) -> bool:
+    return group_ids is None or group_id in group_ids
+
+
+def matches_value_filter(value: str | None, allowed_values: list[str] | None) -> bool:
+    if allowed_values is None:
+        return True
+    return value in allowed_values
+
+
 def month_floor(value: date) -> date:
     return date(value.year, value.month, 1)
 
@@ -99,6 +147,11 @@ def fetch_monthly_market_rows(
     db: Session,
     *,
     category_id: int | None,
+    group_ids: list[int] | None,
+    rarities: list[str] | None,
+    sub_types: list[str] | None,
+    release_year_start: int | None,
+    release_year_end: int | None,
     min_price: float,
     months: int,
 ) -> list[dict[str, Any]]:
@@ -122,7 +175,8 @@ def fetch_monthly_market_rows(
                 p.category_id,
                 c.display_name AS category_name,
                 p.group_id,
-                g.name AS group_name
+                g.name AS group_name,
+                g.published_on
             FROM price_history ph
             JOIN products p ON p.product_id = ph.product_id
             JOIN groups g ON g.group_id = p.group_id
@@ -158,6 +212,7 @@ def fetch_monthly_market_rows(
             category_name,
             group_id,
             group_name,
+            published_on,
             CAST(month_start AS DATE) AS month_start,
             max(CASE WHEN rn_asc = 1 THEN market_price END) AS month_start_price,
             max(CASE WHEN rn_desc = 1 THEN market_price END) AS month_end_price,
@@ -177,6 +232,7 @@ def fetch_monthly_market_rows(
             category_name,
             group_id,
             group_name,
+            published_on,
             month_start
         HAVING max(CASE WHEN rn_desc = 1 THEN market_price END) >= :min_price
            AND count(*) >= 2
@@ -223,6 +279,8 @@ def fetch_monthly_market_rows(
                 "categoryName": row["category_name"],
                 "groupId": row["group_id"],
                 "groupName": row["group_name"],
+                "publishedOn": row["published_on"],
+                "releaseYear": parse_release_year(row["published_on"]),
                 "month": month_label(row["month_start"]),
                 "monthStartPrice": round_or_none(month_start_price),
                 "monthEndPrice": round_or_none(month_end_price),
@@ -244,13 +302,29 @@ def fetch_monthly_market_rows(
                 "observations": row["observations"],
             }
         )
-    return items
+    return [
+        item
+        for item in items
+        if matches_group_filter(item["groupId"], group_ids)
+        and matches_value_filter(item["rarity"], rarities)
+        and matches_value_filter(item["subTypeName"], sub_types)
+        and matches_release_filters(
+            item["publishedOn"],
+            release_year_start,
+            release_year_end,
+        )
+    ]
 
 
 def fetch_current_card_rows(
     db: Session,
     *,
     category_id: int | None,
+    group_ids: list[int] | None,
+    rarities: list[str] | None,
+    sub_types: list[str] | None,
+    release_year_start: int | None,
+    release_year_end: int | None,
     min_price: float,
 ) -> list[dict[str, Any]]:
     sql = text(
@@ -308,6 +382,19 @@ def fetch_current_card_rows(
         .all()
     )
 
+    rows = [
+        row
+        for row in rows
+        if matches_group_filter(row["group_id"], group_ids)
+        and matches_value_filter(row["rarity"], rarities)
+        and matches_value_filter(row["sub_type_name"], sub_types)
+        and matches_release_filters(
+            row["published_on"],
+            release_year_start,
+            release_year_end,
+        )
+    ]
+
     indicator_snapshots = load_indicator_snapshots(db, [dict(row) for row in rows])
     items: list[dict[str, Any]] = []
     for row in rows:
@@ -353,6 +440,7 @@ def fetch_current_card_rows(
                 "groupId": row["group_id"],
                 "groupName": row["group_name"],
                 "publishedOn": row["published_on"],
+                "releaseYear": parse_release_year(row["published_on"]),
                 "lowPrice": round_or_none(row["low_price"]),
                 "midPrice": round_or_none(row["mid_price"]),
                 "highPrice": round_or_none(row["high_price"]),
@@ -415,6 +503,11 @@ def build_rank_map(
 @router.get("/analytics/monthly")
 def get_monthly_analytics(
     category_id: int | None = Query(None),
+    group_id: str | None = Query(None),
+    rarity: str | None = Query(None),
+    sub_type: str | None = Query(None),
+    release_year_start: int | None = Query(None),
+    release_year_end: int | None = Query(None),
     min_price: float = Query(DEFAULT_ANALYTICS_MIN_PRICE, ge=1),
     months: int = Query(6, ge=2, le=24),
     limit: int = Query(10, ge=3, le=25),
@@ -423,6 +516,11 @@ def get_monthly_analytics(
     monthly_rows = fetch_monthly_market_rows(
         db,
         category_id=category_id,
+        group_ids=parse_group_ids(group_id),
+        rarities=parse_csv_values(rarity),
+        sub_types=parse_csv_values(sub_type),
+        release_year_start=release_year_start,
+        release_year_end=release_year_end,
         min_price=min_price,
         months=months,
     )
@@ -564,6 +662,11 @@ def get_monthly_analytics(
 @router.get("/analytics/sets")
 def get_set_analytics(
     category_id: int | None = Query(None),
+    group_id: str | None = Query(None),
+    rarity: str | None = Query(None),
+    sub_type: str | None = Query(None),
+    release_year_start: int | None = Query(None),
+    release_year_end: int | None = Query(None),
     min_price: float = Query(DEFAULT_ANALYTICS_MIN_PRICE, ge=1),
     months: int = Query(6, ge=3, le=24),
     limit: int = Query(18, ge=5, le=40),
@@ -572,11 +675,21 @@ def get_set_analytics(
     current_cards = fetch_current_card_rows(
         db,
         category_id=category_id,
+        group_ids=parse_group_ids(group_id),
+        rarities=parse_csv_values(rarity),
+        sub_types=parse_csv_values(sub_type),
+        release_year_start=release_year_start,
+        release_year_end=release_year_end,
         min_price=min_price,
     )
     monthly_rows = fetch_monthly_market_rows(
         db,
         category_id=category_id,
+        group_ids=parse_group_ids(group_id),
+        rarities=parse_csv_values(rarity),
+        sub_types=parse_csv_values(sub_type),
+        release_year_start=release_year_start,
+        release_year_end=release_year_end,
         min_price=min_price,
         months=months,
     )
@@ -610,6 +723,7 @@ def get_set_analytics(
                 "categoryId": cards[0]["categoryId"],
                 "categoryName": cards[0]["categoryName"],
                 "publishedOn": cards[0]["publishedOn"],
+                "releaseYear": cards[0]["releaseYear"],
                 "trackedCards": len(cards),
                 "avgMarketPrice": round_or_none(
                     mean([card["marketPrice"] for card in cards if card["marketPrice"]])
@@ -745,13 +859,24 @@ def get_set_analytics(
 @router.get("/analytics/sets/{group_id}/history")
 def get_set_history(
     group_id: int,
+    rarity: str | None = Query(None),
+    sub_type: str | None = Query(None),
     min_price: float = Query(DEFAULT_ANALYTICS_MIN_PRICE, ge=1),
     months: int = Query(12, ge=3, le=36),
     db: Session = Depends(get_db),
 ):
     current_cards = [
         card
-        for card in fetch_current_card_rows(db, category_id=None, min_price=min_price)
+        for card in fetch_current_card_rows(
+            db,
+            category_id=None,
+            group_ids=None,
+            rarities=parse_csv_values(rarity),
+            sub_types=parse_csv_values(sub_type),
+            release_year_start=None,
+            release_year_end=None,
+            min_price=min_price,
+        )
         if card["groupId"] == group_id
     ]
     monthly_rows = [
@@ -759,6 +884,11 @@ def get_set_history(
         for row in fetch_monthly_market_rows(
             db,
             category_id=None,
+            group_ids=None,
+            rarities=parse_csv_values(rarity),
+            sub_types=parse_csv_values(sub_type),
+            release_year_start=None,
+            release_year_end=None,
             min_price=min_price,
             months=months,
         )
@@ -852,6 +982,11 @@ def get_set_history(
 @router.get("/analytics/leaderboard")
 def get_leaderboard(
     category_id: int | None = Query(None),
+    group_id: str | None = Query(None),
+    rarity: str | None = Query(None),
+    sub_type: str | None = Query(None),
+    release_year_start: int | None = Query(None),
+    release_year_end: int | None = Query(None),
     min_price: float = Query(DEFAULT_ANALYTICS_MIN_PRICE, ge=1),
     months: int = Query(6, ge=3, le=24),
     limit: int = Query(30, ge=10, le=100),
@@ -861,11 +996,21 @@ def get_leaderboard(
     current_cards = fetch_current_card_rows(
         db,
         category_id=category_id,
+        group_ids=parse_group_ids(group_id),
+        rarities=parse_csv_values(rarity),
+        sub_types=parse_csv_values(sub_type),
+        release_year_start=release_year_start,
+        release_year_end=release_year_end,
         min_price=min_price,
     )
     monthly_rows = fetch_monthly_market_rows(
         db,
         category_id=category_id,
+        group_ids=parse_group_ids(group_id),
+        rarities=parse_csv_values(rarity),
+        sub_types=parse_csv_values(sub_type),
+        release_year_start=release_year_start,
+        release_year_end=release_year_end,
         min_price=min_price,
         months=months,
     )

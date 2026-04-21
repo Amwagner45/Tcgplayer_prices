@@ -73,6 +73,20 @@ export async function fetchProducts(
             items = items.filter((i) =>
                 filters.groupIds!.includes(i.groupId)
             );
+        if (filters.releaseYearStart !== undefined)
+            items = items.filter(
+                (i) =>
+                    i.releaseYear !== null &&
+                    i.releaseYear !== undefined &&
+                    i.releaseYear >= filters.releaseYearStart!
+            );
+        if (filters.releaseYearEnd !== undefined)
+            items = items.filter(
+                (i) =>
+                    i.releaseYear !== null &&
+                    i.releaseYear !== undefined &&
+                    i.releaseYear <= filters.releaseYearEnd!
+            );
 
         // Sort
         const dir = filters.sortDir === "asc" ? 1 : -1;
@@ -108,6 +122,10 @@ export async function fetchProducts(
     if (filters.categoryId) params.category_id = filters.categoryId;
     if (filters.groupIds && filters.groupIds.length > 0)
         params.group_id = filters.groupIds.join(",");
+    if (filters.releaseYearStart !== undefined)
+        params.release_year_start = filters.releaseYearStart;
+    if (filters.releaseYearEnd !== undefined)
+        params.release_year_end = filters.releaseYearEnd;
     if (filters.rarities && filters.rarities.length > 0)
         params.rarity = filters.rarities.join(",");
     if (filters.subTypes && filters.subTypes.length > 0)
@@ -199,11 +217,17 @@ export async function fetchFilters(
             items = items.filter((i) => i.categoryId === categoryId);
         const cats = new Map<number, string>();
         const groups = new Map<number, string>();
+        const groupYears = new Map<number, number | null>();
         const rarities = new Set<string>();
         const subTypes = new Set<string>();
+        const releaseYears = new Set<number>();
         for (const item of items) {
             cats.set(item.categoryId, item.categoryName);
             groups.set(item.groupId, item.groupName);
+            groupYears.set(item.groupId, item.releaseYear ?? null);
+            if (item.releaseYear !== null && item.releaseYear !== undefined) {
+                releaseYears.add(item.releaseYear);
+            }
             if (item.rarity) rarities.add(item.rarity);
             if (item.subTypeName) subTypes.add(item.subTypeName);
         }
@@ -216,8 +240,10 @@ export async function fetchFilters(
             groups: Array.from(groups.entries()).map(([id, name]) => ({
                 groupId: id,
                 name,
+                releaseYear: groupYears.get(id) ?? null,
             })),
             subTypes: Array.from(subTypes).sort(),
+            releaseYears: Array.from(releaseYears).sort((a, b) => b - a),
         };
     }
     const params: Record<string, number> = {};
@@ -274,7 +300,12 @@ export async function fetchMonthlyAnalytics(
     minPrice: number,
     months: number,
     limit: number,
-    categoryId?: number
+    categoryId?: number,
+    groupIds?: number[],
+    rarities?: string[],
+    subTypes?: string[],
+    releaseYearStart?: number,
+    releaseYearEnd?: number
 ): Promise<MonthlyAnalyticsResponse> {
     if (STATIC_MODE) {
         return {
@@ -293,6 +324,11 @@ export async function fetchMonthlyAnalytics(
             months,
             limit,
             category_id: categoryId,
+            group_id: groupIds && groupIds.length > 0 ? groupIds.join(",") : undefined,
+            rarity: rarities && rarities.length > 0 ? rarities.join(",") : undefined,
+            sub_type: subTypes && subTypes.length > 0 ? subTypes.join(",") : undefined,
+            release_year_start: releaseYearStart,
+            release_year_end: releaseYearEnd,
         },
     });
     return data;
@@ -302,7 +338,12 @@ export async function fetchSetAnalytics(
     minPrice: number,
     months: number,
     limit: number,
-    categoryId?: number
+    categoryId?: number,
+    groupIds?: number[],
+    rarities?: string[],
+    subTypes?: string[],
+    releaseYearStart?: number,
+    releaseYearEnd?: number
 ): Promise<SetAnalyticsResponse> {
     if (STATIC_MODE) {
         return {
@@ -318,6 +359,11 @@ export async function fetchSetAnalytics(
             months,
             limit,
             category_id: categoryId,
+            group_id: groupIds && groupIds.length > 0 ? groupIds.join(",") : undefined,
+            rarity: rarities && rarities.length > 0 ? rarities.join(",") : undefined,
+            sub_type: subTypes && subTypes.length > 0 ? subTypes.join(",") : undefined,
+            release_year_start: releaseYearStart,
+            release_year_end: releaseYearEnd,
         },
     });
     return data;
@@ -326,7 +372,9 @@ export async function fetchSetAnalytics(
 export async function fetchSetHistory(
     groupId: number,
     minPrice: number,
-    months: number
+    months: number,
+    rarities?: string[],
+    subTypes?: string[]
 ): Promise<SetDetailResponse> {
     if (STATIC_MODE) {
         return {
@@ -343,6 +391,8 @@ export async function fetchSetHistory(
             params: {
                 min_price: minPrice,
                 months,
+                rarity: rarities && rarities.length > 0 ? rarities.join(",") : undefined,
+                sub_type: subTypes && subTypes.length > 0 ? subTypes.join(",") : undefined,
             },
         }
     );
@@ -354,7 +404,12 @@ export async function fetchLeaderboard(
     months: number,
     limit: number,
     metric: string,
-    categoryId?: number
+    categoryId?: number,
+    groupIds?: number[],
+    rarities?: string[],
+    subTypes?: string[],
+    releaseYearStart?: number,
+    releaseYearEnd?: number
 ): Promise<LeaderboardResponse> {
     if (STATIC_MODE) {
         return {
@@ -371,6 +426,11 @@ export async function fetchLeaderboard(
             limit,
             metric,
             category_id: categoryId,
+            group_id: groupIds && groupIds.length > 0 ? groupIds.join(",") : undefined,
+            rarity: rarities && rarities.length > 0 ? rarities.join(",") : undefined,
+            sub_type: subTypes && subTypes.length > 0 ? subTypes.join(",") : undefined,
+            release_year_start: releaseYearStart,
+            release_year_end: releaseYearEnd,
         },
     });
     return data;

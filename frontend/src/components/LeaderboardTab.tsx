@@ -32,6 +32,11 @@ import type { LeaderboardRow } from "../types";
 interface Props {
     minPrice: number;
     categoryId?: number;
+    groupIds?: number[];
+    rarities?: string[];
+    subTypes?: string[];
+    releaseYearStart?: number;
+    releaseYearEnd?: number;
     onSelectCard: (productId: number) => void;
 }
 
@@ -61,9 +66,29 @@ function rankDeltaChip(value: number | null) {
     return <Chip icon={<TrendingFlatIcon />} label="0" size="small" />;
 }
 
-export default function LeaderboardTab({ minPrice, categoryId, onSelectCard }: Props) {
+export default function LeaderboardTab({
+    minPrice,
+    categoryId,
+    groupIds,
+    rarities,
+    subTypes,
+    releaseYearStart,
+    releaseYearEnd,
+    onSelectCard,
+}: Props) {
     const [metric, setMetric] = useState("composite");
-    const { data, isLoading } = useLeaderboard(minPrice, 6, 40, metric, categoryId);
+    const { data, isLoading } = useLeaderboard(
+        minPrice,
+        6,
+        40,
+        metric,
+        categoryId,
+        groupIds,
+        rarities,
+        subTypes,
+        releaseYearStart,
+        releaseYearEnd
+    );
     const [selectedRow, setSelectedRow] = useState<LeaderboardRow | null>(null);
 
     useEffect(() => {

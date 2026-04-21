@@ -84,11 +84,38 @@ export function useMonthlyAnalytics(
     minPrice: number,
     months: number,
     limit: number,
-    categoryId?: number
+    categoryId?: number,
+    groupIds?: number[],
+    rarities?: string[],
+    subTypes?: string[],
+    releaseYearStart?: number,
+    releaseYearEnd?: number
 ) {
     return useQuery({
-        queryKey: ["monthlyAnalytics", minPrice, months, limit, categoryId],
-        queryFn: () => fetchMonthlyAnalytics(minPrice, months, limit, categoryId),
+        queryKey: [
+            "monthlyAnalytics",
+            minPrice,
+            months,
+            limit,
+            categoryId,
+            groupIds,
+            rarities,
+            subTypes,
+            releaseYearStart,
+            releaseYearEnd,
+        ],
+        queryFn: () =>
+            fetchMonthlyAnalytics(
+                minPrice,
+                months,
+                limit,
+                categoryId,
+                groupIds,
+                rarities,
+                subTypes,
+                releaseYearStart,
+                releaseYearEnd
+            ),
     });
 }
 
@@ -96,18 +123,51 @@ export function useSetAnalytics(
     minPrice: number,
     months: number,
     limit: number,
-    categoryId?: number
+    categoryId?: number,
+    groupIds?: number[],
+    rarities?: string[],
+    subTypes?: string[],
+    releaseYearStart?: number,
+    releaseYearEnd?: number
 ) {
     return useQuery({
-        queryKey: ["setAnalytics", minPrice, months, limit, categoryId],
-        queryFn: () => fetchSetAnalytics(minPrice, months, limit, categoryId),
+        queryKey: [
+            "setAnalytics",
+            minPrice,
+            months,
+            limit,
+            categoryId,
+            groupIds,
+            rarities,
+            subTypes,
+            releaseYearStart,
+            releaseYearEnd,
+        ],
+        queryFn: () =>
+            fetchSetAnalytics(
+                minPrice,
+                months,
+                limit,
+                categoryId,
+                groupIds,
+                rarities,
+                subTypes,
+                releaseYearStart,
+                releaseYearEnd
+            ),
     });
 }
 
-export function useSetHistory(groupId: number | null, minPrice: number, months: number) {
+export function useSetHistory(
+    groupId: number | null,
+    minPrice: number,
+    months: number,
+    rarities?: string[],
+    subTypes?: string[]
+) {
     return useQuery({
-        queryKey: ["setHistory", groupId, minPrice, months],
-        queryFn: () => fetchSetHistory(groupId!, minPrice, months),
+        queryKey: ["setHistory", groupId, minPrice, months, rarities, subTypes],
+        queryFn: () => fetchSetHistory(groupId!, minPrice, months, rarities, subTypes),
         enabled: groupId !== null,
     });
 }
@@ -117,11 +177,40 @@ export function useLeaderboard(
     months: number,
     limit: number,
     metric: string,
-    categoryId?: number
+    categoryId?: number,
+    groupIds?: number[],
+    rarities?: string[],
+    subTypes?: string[],
+    releaseYearStart?: number,
+    releaseYearEnd?: number
 ) {
     return useQuery({
-        queryKey: ["leaderboard", minPrice, months, limit, metric, categoryId],
-        queryFn: () => fetchLeaderboard(minPrice, months, limit, metric, categoryId),
+        queryKey: [
+            "leaderboard",
+            minPrice,
+            months,
+            limit,
+            metric,
+            categoryId,
+            groupIds,
+            rarities,
+            subTypes,
+            releaseYearStart,
+            releaseYearEnd,
+        ],
+        queryFn: () =>
+            fetchLeaderboard(
+                minPrice,
+                months,
+                limit,
+                metric,
+                categoryId,
+                groupIds,
+                rarities,
+                subTypes,
+                releaseYearStart,
+                releaseYearEnd
+            ),
     });
 }
 

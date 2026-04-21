@@ -4,15 +4,9 @@ import {
     Button,
     Chip,
     Container,
-    FormControl,
-    InputAdornment,
-    InputLabel,
-    MenuItem,
     Paper,
-    Select,
     Tab,
     Tabs,
-    TextField,
     Typography,
     type PaletteMode,
 } from "@mui/material";
@@ -28,21 +22,45 @@ import { STATIC_MODE } from "../services/api";
 import { useFetchPrices } from "../hooks/useFetchPrices";
 import { useFilters } from "../hooks/useProducts";
 import type { ProductFilters } from "../types";
+import FilterPanel from "./FilterPanel";
 
 const MarketOverviewTab = lazy(() => import("./MarketOverviewTab"));
 const MonthlyIntelTab = lazy(() => import("./MonthlyIntelTab"));
 const SetAnalyticsTab = lazy(() => import("./SetAnalyticsTab"));
 const LeaderboardTab = lazy(() => import("./LeaderboardTab"));
 const WatchlistView = lazy(() => import("./WatchlistView"));
-const CardDetailModal = lazy(() => import("./CardDetailModal"));
+const CardDetailModal = lazy(() => import("./SafeCardDetailModal"));
 const FetchStatusModal = lazy(() => import("./FetchStatusModal"));
 
 const DEFAULT_FILTERS: ProductFilters = {
     sortBy: "pct_below_mid",
     sortDir: "desc",
+    releaseYearStart: 2013,
     page: 1,
     pageSize: 50,
 };
+
+function getEraScopeLabel(filters: ProductFilters): string {
+    if (filters.releaseYearStart === 2013 && filters.releaseYearEnd === undefined) {
+        return "Mid + Modern (2013+)";
+    }
+    if (filters.releaseYearStart === 2019 && filters.releaseYearEnd === undefined) {
+        return "Modern (2019+)";
+    }
+    if (filters.releaseYearStart === 2013 && filters.releaseYearEnd === 2018) {
+        return "Mid Era (2013-2018)";
+    }
+    if (filters.releaseYearStart !== undefined && filters.releaseYearEnd !== undefined) {
+        return `${filters.releaseYearStart}-${filters.releaseYearEnd}`;
+    }
+    if (filters.releaseYearStart !== undefined) {
+        return `${filters.releaseYearStart}+`;
+    }
+    if (filters.releaseYearEnd !== undefined) {
+        return `Up to ${filters.releaseYearEnd}`;
+    }
+    return "All Eras";
+}
 
 interface Props {
     mode: PaletteMode;
@@ -172,57 +190,14 @@ export default function Dashboard({ mode, onToggleMode }: Props) {
                         <Box
                             sx={{
                                 display: "grid",
-                                gap: 2,
-                                gridTemplateColumns: {
-                                    xs: "1fr",
-                                    md: "minmax(220px, 260px) minmax(140px, 180px) 1fr",
-                                },
+                                gap: 1,
                                 alignItems: "center",
                                 mb: 2,
                             }}
                         >
-                            <FormControl size="small" fullWidth>
-                                <InputLabel>Game Scope</InputLabel>
-                                <Select
-                                    value={filters.categoryId ?? ""}
-                                    label="Game Scope"
-                                    onChange={(event) =>
-                                        handleFilterChange({
-                                            categoryId: event.target.value
-                                                ? Number(event.target.value)
-                                                : undefined,
-                                            groupIds: undefined,
-                                            page: 1,
-                                        })
-                                    }
-                                >
-                                    <MenuItem value="">All Games</MenuItem>
-                                    {filterOptions?.categories.map((category) => (
-                                        <MenuItem key={category.categoryId} value={category.categoryId}>
-                                            {category.displayName}
-                                        </MenuItem>
-                                    ))}
-                                </Select>
-                            </FormControl>
-
-                            <TextField
-                                size="small"
-                                label="Analysis Floor"
-                                type="number"
-                                value={analyticsMinPrice}
-                                onChange={(event) => {
-                                    const nextValue = Number(event.target.value);
-                                    setAnalyticsMinPrice(Number.isFinite(nextValue) && nextValue > 0 ? nextValue : 1);
-                                }}
-                                slotProps={{
-                                    input: {
-                                        startAdornment: <InputAdornment position="start">$</InputAdornment>,
-                                    },
-                                }}
-                            />
-
                             <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
                                 <Chip label={`Floor applies to monthly, set, and leaderboard analytics`} />
+                                <Chip label={`Era scope: ${getEraScopeLabel(filters)}`} color="secondary" variant="outlined" />
                                 {filters.categoryId && filterOptions?.categories ? (
                                     <Chip
                                         color="primary"
@@ -260,6 +235,14 @@ export default function Dashboard({ mode, onToggleMode }: Props) {
             </Box>
 
             <Container maxWidth="xl" sx={{ py: 3 }}>
+                <Box sx={{ mb: 3 }}>
+                    <FilterPanel
+                        filters={filters}
+                        onChange={handleFilterChange}
+                        analyticsMinPrice={analyticsMinPrice}
+                        onAnalyticsMinPriceChange={setAnalyticsMinPrice}
+                    />
+                </Box>
                 <Suspense fallback={loadingPanel}>
                     {activeTab === "market" && (
                         <MarketOverviewTab
@@ -273,6 +256,11 @@ export default function Dashboard({ mode, onToggleMode }: Props) {
                         <MonthlyIntelTab
                             minPrice={analyticsMinPrice}
                             categoryId={filters.categoryId}
+                            groupIds={filters.groupIds}
+                            rarities={filters.rarities}
+                            subTypes={filters.subTypes}
+                            releaseYearStart={filters.releaseYearStart}
+                            releaseYearEnd={filters.releaseYearEnd}
                             onSelectCard={setSelectedCard}
                         />
                     )}
@@ -281,6 +269,11 @@ export default function Dashboard({ mode, onToggleMode }: Props) {
                         <SetAnalyticsTab
                             minPrice={analyticsMinPrice}
                             categoryId={filters.categoryId}
+                            groupIds={filters.groupIds}
+                            rarities={filters.rarities}
+                            subTypes={filters.subTypes}
+                            releaseYearStart={filters.releaseYearStart}
+                            releaseYearEnd={filters.releaseYearEnd}
                             onSelectCard={setSelectedCard}
                         />
                     )}
@@ -289,6 +282,11 @@ export default function Dashboard({ mode, onToggleMode }: Props) {
                         <LeaderboardTab
                             minPrice={analyticsMinPrice}
                             categoryId={filters.categoryId}
+                            groupIds={filters.groupIds}
+                            rarities={filters.rarities}
+                            subTypes={filters.subTypes}
+                            releaseYearStart={filters.releaseYearStart}
+                            releaseYearEnd={filters.releaseYearEnd}
                             onSelectCard={setSelectedCard}
                         />
                     )}

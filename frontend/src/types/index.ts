@@ -10,6 +10,8 @@ export interface ProductItem {
     cardNumber: string | null;
     cardType: string | null;
     groupName: string;
+    publishedOn?: string | null;
+    releaseYear?: number | null;
     categoryName: string;
     subTypeName: string;
     lowPrice: number | null;
@@ -90,13 +92,21 @@ export interface CategoryStat {
 export interface FiltersResponse {
     categories: { categoryId: number; displayName: string }[];
     rarities: string[];
-    groups: { groupId: number; name: string }[];
+    groups: {
+        groupId: number;
+        name: string;
+        publishedOn?: string | null;
+        releaseYear?: number | null;
+    }[];
     subTypes: string[];
+    releaseYears: number[];
 }
 
 export interface ProductFilters {
     categoryId?: number;
     groupIds?: number[];
+    releaseYearStart?: number;
+    releaseYearEnd?: number;
     rarities?: string[];
     subTypes?: string[];
     minPrice?: number;
@@ -156,6 +166,8 @@ export interface MonthlyAnalyticsCard {
     categoryName: string;
     groupId: number;
     groupName: string;
+    publishedOn?: string | null;
+    releaseYear?: number | null;
     month: string;
     monthStartPrice: number | null;
     monthEndPrice: number | null;
@@ -205,6 +217,7 @@ export interface SetAnalyticsSummary {
     categoryId: number;
     categoryName: string;
     publishedOn: string | null;
+    releaseYear?: number | null;
     trackedCards: number;
     avgMarketPrice: number | null;
     avg30dChange: number | null;

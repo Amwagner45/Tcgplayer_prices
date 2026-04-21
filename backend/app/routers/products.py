@@ -73,6 +73,12 @@ def serialize_product_rows(rows, indicator_snapshots: dict[tuple[int, str], dict
                 "cardNumber": r.card_number,
                 "cardType": r.card_type,
                 "groupName": r.group_name,
+                "publishedOn": r.published_on,
+                "releaseYear": (
+                    int(r.published_on[:4])
+                    if r.published_on is not None and r.published_on[:4].isdigit()
+                    else None
+                ),
                 "categoryName": r.category_name,
                 "subTypeName": r.sub_type_name,
                 "lowPrice": r.low_price,
@@ -126,6 +132,8 @@ def serialize_product_rows(rows, indicator_snapshots: dict[tuple[int, str], dict
 def list_products(
     category_id: int | None = Query(None),
     group_id: str | None = Query(None),
+    release_year_start: int | None = Query(None),
+    release_year_end: int | None = Query(None),
     rarity: str | None = Query(None),
     sub_type: str | None = Query(None),
     min_price: float | None = Query(None),
@@ -163,6 +171,7 @@ def list_products(
             Product.card_number,
             Product.card_type,
             Group.name.label("group_name"),
+            Group.published_on,
             Category.display_name.label("category_name"),
             Price.sub_type_name,
             Price.low_price,
@@ -198,6 +207,16 @@ def list_products(
             query = query.filter(Product.group_id == group_ids[0])
         else:
             query = query.filter(Product.group_id.in_(group_ids))
+    if release_year_start is not None:
+        query = query.filter(
+            Group.published_on.isnot(None),
+            Group.published_on >= f"{release_year_start:04d}-01-01",
+        )
+    if release_year_end is not None:
+        query = query.filter(
+            Group.published_on.isnot(None),
+            Group.published_on < f"{release_year_end + 1:04d}-01-01",
+        )
     if rarity:
         rarities = [r.strip() for r in rarity.split(",") if r.strip()]
         if len(rarities) == 1:

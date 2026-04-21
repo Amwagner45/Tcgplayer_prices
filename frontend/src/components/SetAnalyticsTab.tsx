@@ -23,6 +23,11 @@ import { useSetAnalytics, useSetHistory } from "../hooks/useProducts";
 interface Props {
     minPrice: number;
     categoryId?: number;
+    groupIds?: number[];
+    rarities?: string[];
+    subTypes?: string[];
+    releaseYearStart?: number;
+    releaseYearEnd?: number;
     onSelectCard: (productId: number) => void;
 }
 
@@ -36,10 +41,29 @@ function formatPrice(value: number | null | undefined) {
     return `$${value.toFixed(2)}`;
 }
 
-export default function SetAnalyticsTab({ minPrice, categoryId, onSelectCard }: Props) {
-    const { data, isLoading } = useSetAnalytics(minPrice, 6, 18, categoryId);
+export default function SetAnalyticsTab({
+    minPrice,
+    categoryId,
+    groupIds,
+    rarities,
+    subTypes,
+    releaseYearStart,
+    releaseYearEnd,
+    onSelectCard,
+}: Props) {
+    const { data, isLoading } = useSetAnalytics(
+        minPrice,
+        6,
+        18,
+        categoryId,
+        groupIds,
+        rarities,
+        subTypes,
+        releaseYearStart,
+        releaseYearEnd
+    );
     const [selectedSetId, setSelectedSetId] = useState<number | null>(null);
-    const { data: setHistory } = useSetHistory(selectedSetId, minPrice, 12);
+    const { data: setHistory } = useSetHistory(selectedSetId, minPrice, 12, rarities, subTypes);
 
     useEffect(() => {
         if (!selectedSetId && data?.sets.length) {

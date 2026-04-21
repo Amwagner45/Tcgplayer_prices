@@ -341,7 +341,6 @@ export default function CardDetailModal({ productId, onClose }: Props) {
             responsive: true,
             scrollZoom: true,
             doubleClick: "reset+autosize",
-            modeBarButtonsToAdd: ["drawline", "drawopenpath", "eraseshape"] as unknown as Config["modeBarButtonsToAdd"],
         }),
         []
     );

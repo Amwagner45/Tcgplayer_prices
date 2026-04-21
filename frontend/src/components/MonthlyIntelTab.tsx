@@ -22,6 +22,11 @@ import type { MonthlyAnalyticsCard } from "../types";
 interface Props {
     minPrice: number;
     categoryId?: number;
+    groupIds?: number[];
+    rarities?: string[];
+    subTypes?: string[];
+    releaseYearStart?: number;
+    releaseYearEnd?: number;
     onSelectCard: (productId: number) => void;
 }
 
@@ -125,8 +130,27 @@ function SignalList({
     );
 }
 
-export default function MonthlyIntelTab({ minPrice, categoryId, onSelectCard }: Props) {
-    const { data, isLoading } = useMonthlyAnalytics(minPrice, 6, 8, categoryId);
+export default function MonthlyIntelTab({
+    minPrice,
+    categoryId,
+    groupIds,
+    rarities,
+    subTypes,
+    releaseYearStart,
+    releaseYearEnd,
+    onSelectCard,
+}: Props) {
+    const { data, isLoading } = useMonthlyAnalytics(
+        minPrice,
+        6,
+        8,
+        categoryId,
+        groupIds,
+        rarities,
+        subTypes,
+        releaseYearStart,
+        releaseYearEnd
+    );
 
     if (isLoading) {
         return (

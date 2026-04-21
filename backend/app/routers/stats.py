@@ -8,6 +8,13 @@ from app.models import Product, Price, Group, Category
 router = APIRouter(prefix="/api")
 
 
+def parse_release_year(published_on: str | None) -> int | None:
+    if not published_on:
+        return None
+    year_text = published_on[:4]
+    return int(year_text) if year_text.isdigit() else None
+
+
 @router.get("/stats")
 def get_stats(
     category_id: int | None = Query(None),
@@ -73,13 +80,28 @@ def get_filters(
     rarities = sorted([r[0] for r in rarity_q.all()])
 
     # Groups (sets)
-    group_q = db.query(Group.group_id, Group.name)
+    group_q = db.query(Group.group_id, Group.name, Group.published_on)
     if category_id is not None:
         group_q = group_q.filter(Group.category_id == category_id)
     groups = [
-        {"groupId": g.group_id, "name": g.name}
+        {
+            "groupId": g.group_id,
+            "name": g.name,
+            "publishedOn": g.published_on,
+            "releaseYear": parse_release_year(g.published_on),
+        }
         for g in group_q.order_by(Group.name).all()
     ]
+    release_years = sorted(
+        {
+            release_year
+            for release_year in (
+                parse_release_year(group["publishedOn"]) for group in groups
+            )
+            if release_year is not None
+        },
+        reverse=True,
+    )
 
     # SubTypes
     sub_q = db.query(distinct(Price.sub_type_name))
@@ -100,4 +122,5 @@ def get_filters(
         "rarities": rarities,
         "groups": groups,
         "subTypes": sub_types,
+        "releaseYears": release_years,
     }
